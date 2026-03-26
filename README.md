@@ -56,5 +56,4 @@ Or from VS Code, use tasks:
 - `.vscode` shared build/run/debug configuration
 - `scripts` local build/release helper scripts
 - `packaging` installer scaffolding
-- `.ai/project` project tracking and delivery plan
 - `doc` project documentation

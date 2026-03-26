@@ -14,7 +14,6 @@
 - `scripts`: build helpers for CLI/CI reuse
 - `packaging`: installer scaffolding
 - `doc`: project docs
-- `.ai/project`: planning, backlog, tracking
 
 ## Application Layers
 
