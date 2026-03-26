@@ -17,6 +17,8 @@ This repository is organized to closely match the structure and workflow style u
 
 ![Bin X-Ray](doc/images/screenshot-01.png)
 
+![Bin X-Ray](doc/images/screenshot-02.png)
+
 
 ## Current Phase
 

@@ -6,6 +6,7 @@
 #include "imgui.h"
 
 #include <algorithm>
+#include <cstdint>
 #include <cstdio>
 
 namespace BinXray::UI {
@@ -55,12 +56,18 @@ void HexViewPanel::drawContent(const Core::BinaryDocument& document,
         ImGui::TextUnformatted(offsetBuf);
         ImGui::SameLine();
 
+        char        asciiBuf[Constants::kHexBytesPerRow + 1];
+        std::size_t asciiLen = 0;
+
         for (std::size_t column = 0; column < bytesPerRow && (relativeOffset + column) < maxVisibleBytes; ++column) {
-            const std::size_t index      = absoluteOffset + column;
-            const bool        isSelected = (index == selectedOffset);
+            const std::size_t  index      = absoluteOffset + column;
+            const bool         isSelected = (index == selectedOffset);
+            const std::uint8_t byteVal    = bytes[index];
+
+            asciiBuf[asciiLen++] = (byteVal >= 0x20 && byteVal <= 0x7E) ? static_cast<char>(byteVal) : '.';
 
             char hexBuf[3];
-            std::snprintf(hexBuf, sizeof(hexBuf), "%02X", static_cast<unsigned int>(bytes[index]));
+            std::snprintf(hexBuf, sizeof(hexBuf), "%02X", static_cast<unsigned int>(byteVal));
 
             if (isSelected) {
                 ImGui::PushStyleColor(ImGuiCol_Button,        Constants::kHexSelectedColor);
@@ -81,6 +88,10 @@ void HexViewPanel::drawContent(const Core::BinaryDocument& document,
                 ImGui::SameLine();
             }
         }
+
+        asciiBuf[asciiLen] = '\0';
+        ImGui::SameLine();
+        ImGui::TextUnformatted(asciiBuf);
     }
 
     if (rangeLength > maxVisibleBytes) {
