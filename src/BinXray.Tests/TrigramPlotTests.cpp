@@ -231,6 +231,43 @@ bool runTrigramPlotTests() {
         passed = expectU32(plot.maxCount(), 0, "recompute phase2: maxCount") && passed;
     }
 
+    // ---- Intensity-to-alpha scaling tests -----------------------------------
+    // 17. Full opacity: intensity alpha channel at 1.0 multiplier.
+    {
+        constexpr float fullOpacity = 1.0F;
+        const int alpha = static_cast<int>(fullOpacity * 255.0F);
+        passed = expectEq(static_cast<std::size_t>(alpha), 255,
+                          "opacity full: alpha=255") && passed;
+    }
+
+    // 18. Half opacity.
+    {
+        constexpr float halfOpacity = 0.5F;
+        const int alpha = static_cast<int>(halfOpacity * 255.0F);
+        passed = expectEq(static_cast<std::size_t>(alpha), 127,
+                          "opacity half: alpha=127") && passed;
+    }
+
+    // 19. Minimum opacity (0.05).
+    {
+        constexpr float minOpacity = 0.05F;
+        const int alpha = static_cast<int>(minOpacity * 255.0F);
+        // 0.05 * 255 = 12.75 -> truncates to 12
+        passed = expectEq(static_cast<std::size_t>(alpha), 12,
+                          "opacity min: alpha=12") && passed;
+    }
+
+    // 20. mapIntensity combined with alpha: binary mode, half opacity.
+    {
+        const std::uint8_t intensity = TrigramPlot::mapIntensity(5, 100, false, false);
+        passed = expectU8(intensity, 255, "alpha+binary: intensity=255") && passed;
+        constexpr float opacity = 0.5F;
+        const int alpha = static_cast<int>(opacity * 255.0F);
+        // Greyscale colour: (intensity, intensity, intensity, alpha).
+        passed = expectEq(static_cast<std::size_t>(alpha), 127,
+                          "alpha+binary: alpha=127") && passed;
+    }
+
     if (passed) {
         std::cout << "[PASS] TrigramPlotTests" << std::endl;
     }

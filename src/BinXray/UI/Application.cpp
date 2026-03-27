@@ -117,7 +117,12 @@ Application::Application()
       m_3dPitch(Constants::k3DPlotDefaultPitch),
       m_3dAutoRotate(false),
       m_3dAutoRotateSpeed(Constants::k3DAutoRotateSpeedDefault),
-      m_3dElevationDeg(30.0F) {
+      m_3dElevationDeg(30.0F),
+      m_3dPointOpacity(Constants::k3DOpacityDefault),
+      m_3dBgMode(Constants::k3DBgModeDefault),
+      m_3dBgCustomColor{Constants::k3DBgCustomDefault[0],
+                        Constants::k3DBgCustomDefault[1],
+                        Constants::k3DBgCustomDefault[2]} {
     m_matrixLuminance.fill(0);
 }
 
@@ -663,6 +668,22 @@ void Application::drawControlsColumn() {
             Constants::k3DAutoRotateSpeedMin, Constants::k3DAutoRotateSpeedMax, "%.2f");
         ImGui::SliderFloat("Elevation", &m_3dElevationDeg,
             Constants::k3DElevationMin, Constants::k3DElevationMax, "%.1f");
+
+        ImGui::Separator();
+        ImGui::TextColored(Constants::kControlsLabelColor, "3D Appearance");
+        ImGui::SliderFloat("Opacity", &m_3dPointOpacity,
+            Constants::k3DOpacityMin, Constants::k3DOpacityMax, "%.2f");
+
+        ImGui::TextColored(Constants::kControlsLabelColor, "Background");
+        ImGui::RadioButton("Black",  &m_3dBgMode, Constants::k3DBgModeBlack);
+        ImGui::SameLine();
+        ImGui::RadioButton("White",  &m_3dBgMode, Constants::k3DBgModeWhite);
+        ImGui::SameLine();
+        ImGui::RadioButton("Custom", &m_3dBgMode, Constants::k3DBgModeCustom);
+        if (m_3dBgMode == Constants::k3DBgModeCustom) {
+            ImGui::ColorEdit3("##BgCustom", m_3dBgCustomColor,
+                ImGuiColorEditFlags_NoInputs | ImGuiColorEditFlags_NoLabel);
+        }
     }
 
     ImGui::Separator();
@@ -923,10 +944,28 @@ void Application::draw3DPlot() {
 
     ImDrawList* drawList = ImGui::GetWindowDrawList();
 
+    // Resolve background colour from the selected mode.
+    ImU32 bgColor;
+    if (m_3dBgMode == Constants::k3DBgModeWhite) {
+        bgColor = Constants::k3DBgColorWhite;
+    } else if (m_3dBgMode == Constants::k3DBgModeCustom) {
+        bgColor = IM_COL32(
+            static_cast<int>(m_3dBgCustomColor[0] * 255.0F),
+            static_cast<int>(m_3dBgCustomColor[1] * 255.0F),
+            static_cast<int>(m_3dBgCustomColor[2] * 255.0F), 255);
+    } else {
+        bgColor = Constants::k3DBgColorBlack;
+    }
+
     // Background fill.
     drawList->AddRectFilled(canvasOrigin,
         ImVec2(canvasOrigin.x + plotSize, canvasOrigin.y + plotSize),
-        Constants::k3DPlotBgColor);
+        bgColor);
+
+    // Clip all subsequent drawing (wireframe, labels, points) to the canvas.
+    const ImVec2 canvasMax = ImVec2(canvasOrigin.x + plotSize,
+                                     canvasOrigin.y + plotSize);
+    drawList->PushClipRect(canvasOrigin, canvasMax, true);
 
     // Draw wireframe cube edges (12 edges of a unit cube).
     {
@@ -962,29 +1001,32 @@ void Application::draw3DPlot() {
     const auto& points = m_trigramPlot.points();
     const std::uint32_t maxCount = m_trigramPlot.maxCount();
     const float ptRad = Constants::k3DPlotPointSize;
+    const int alpha = static_cast<int>(m_3dPointOpacity * 255.0F);
 
     for (const auto& pt : points) {
         const std::uint8_t intensity = Core::TrigramPlot::mapIntensity(
             pt.count, maxCount, m_scaleEnabled, m_normalizeEnabled);
         if (intensity == 0) continue;
 
-        const ImU32 color = m_heatMapEnabled
-            ? intensityToHeatMap(intensity)
-            : IM_COL32(intensity, intensity, intensity, 255);
+        ImU32 color;
+        if (m_heatMapEnabled) {
+            // Apply opacity to heat-map colour.
+            const ImU32 base = intensityToHeatMap(intensity);
+            color = (base & 0x00FFFFFF) | (static_cast<ImU32>(alpha) << 24);
+        } else {
+            color = IM_COL32(intensity, intensity, intensity, alpha);
+        }
 
         float px, py;
         project(static_cast<float>(pt.x),
                 static_cast<float>(pt.y),
                 static_cast<float>(pt.z), px, py);
 
-        // Clip to canvas bounds.
-        if (px < canvasOrigin.x || px > canvasOrigin.x + plotSize ||
-            py < canvasOrigin.y || py > canvasOrigin.y + plotSize) {
-            continue;
-        }
         drawList->AddRectFilled(ImVec2(px - ptRad, py - ptRad),
                                 ImVec2(px + ptRad, py + ptRad), color);
     }
+
+    drawList->PopClipRect();
 
     // Border.
     drawList->AddRect(canvasOrigin,

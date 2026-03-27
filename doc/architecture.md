@@ -74,6 +74,15 @@ projection with yaw/pitch rotation.
   slider (−89° to 89°).  Manual drag is disabled during auto-rotation.
 - **Double-click reset**: Restores default yaw, pitch, and elevation.
 - **Heat-map / greyscale**: The same colour toggle applies to 3D points.
+- **Point opacity**: A slider (5 %–100 %) controls alpha transparency of
+  scatter dots, making dense clusters readable without hiding shadowed
+  points behind opaque neighbours.
+- **Canvas background**: Three presets — Black (default), White, Custom.
+  The Custom preset exposes an RGB colour picker.  A white background
+  makes dark low-intensity points easier to spot.
+- **Canvas clipping**: All wireframe edges, axis labels, and scatter dots
+  are clipped to the canvas rectangle so nothing overflows into
+  surrounding UI panels.
 - **Seeking disabled**: The 2D-only seeking controls are greyed out in 3D
   mode.
 
@@ -93,7 +102,8 @@ projection with yaw/pitch rotation.
   `TrigramPlotTests`.
 - Edge cases covered: empty data, single byte, sub-ranges, boundary
   clamping, maxResults capping, self-transitions, inverted ranges,
-  repeated trigram accumulation, mapIntensity modes.
+  repeated trigram accumulation, mapIntensity modes, opacity-alpha
+  scaling validation.
 - Process exit code reflects suite pass/fail for CI gating.
 
 ## Planned Evolution

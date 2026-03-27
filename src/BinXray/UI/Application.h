@@ -143,6 +143,9 @@ private:
     bool  m_3dAutoRotate;              ///< When true, yaw advances each frame.
     float m_3dAutoRotateSpeed;         ///< Degrees per frame.
     float m_3dElevationDeg;            ///< Adjustable elevation in degrees (-89..89).
+    float m_3dPointOpacity;            ///< Alpha multiplier for scatter dots (0.05..1.0).
+    int   m_3dBgMode;                  ///< 0 = Black, 1 = White, 2 = Custom.
+    float m_3dBgCustomColor[3];        ///< RGB triplet for Custom background mode.
 };
 
 } // namespace BinXray::UI

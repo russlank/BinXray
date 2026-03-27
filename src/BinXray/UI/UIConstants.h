@@ -119,11 +119,28 @@ constexpr float k3DPlotDefaultYaw      = 0.78F;    ///< Initial yaw   (radians, 
 constexpr float k3DPlotDefaultPitch    = 0.52F;    ///< Initial pitch  (radians, ~30°).
 constexpr float k3DPlotRotationSpeed   = 0.005F;   ///< Radians per mouse-pixel drag.
 constexpr ImU32 k3DPlotAxisColor       = IM_COL32(120, 120, 120, 180);
-constexpr ImU32 k3DPlotBgColor         = IM_COL32( 10,  12,  18, 255);
 constexpr float k3DAutoRotateSpeedDefault = 0.5F;  ///< Default auto-rotation deg/frame.
 constexpr float k3DAutoRotateSpeedMin     = 0.05F;
 constexpr float k3DAutoRotateSpeedMax     = 5.0F;
 constexpr float k3DElevationMin           = -89.0F; ///< Degrees.
 constexpr float k3DElevationMax           =  89.0F;
+
+// ── 3D point opacity ─────────────────────────────────────────────────────────
+/// Controls transparency of scatter-plot dots so dense regions remain readable.
+constexpr float k3DOpacityDefault = 1.0F;
+constexpr float k3DOpacityMin     = 0.05F;
+constexpr float k3DOpacityMax     = 1.0F;
+
+// ── 3D canvas background ─────────────────────────────────────────────────────
+/// Three background presets: Black (0), White (1), Custom (2).
+/// The custom preset uses an RGB triplet adjustable via sliders.
+constexpr int   k3DBgModeBlack   = 0;
+constexpr int   k3DBgModeWhite   = 1;
+constexpr int   k3DBgModeCustom  = 2;
+constexpr int   k3DBgModeDefault = 0;
+constexpr ImU32 k3DBgColorBlack  = IM_COL32(  10,  12,  18, 255);
+constexpr ImU32 k3DBgColorWhite  = IM_COL32( 240, 240, 240, 255);
+/// Default custom background colour (dark blue-grey, same as Black preset).
+constexpr float k3DBgCustomDefault[3] = {0.04F, 0.05F, 0.07F};
 
 } // namespace BinXray::UI::Constants
