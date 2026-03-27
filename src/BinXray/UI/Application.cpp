@@ -233,6 +233,13 @@ bool Application::initialize(HINSTANCE hInstance) {
 int Application::run() {
     MSG msg = {};
     while (m_running && msg.message != WM_QUIT) {
+        // If nothing requires continuous rendering, sleep until the OS
+        // delivers an input/paint/timer message.  This drops CPU and GPU
+        // utilization to near-zero when the application is idle.
+        if (!needsContinuousRender()) {
+            ::MsgWaitForMultipleObjects(0, nullptr, FALSE, INFINITE, QS_ALLINPUT);
+        }
+
         while (::PeekMessage(&msg, nullptr, 0U, 0U, PM_REMOVE)) {
             ::TranslateMessage(&msg);
             ::DispatchMessage(&msg);
@@ -466,6 +473,16 @@ void Application::invalidateSeek() {
         m_seek.valid = false;
         m_seek.result = {};
     }
+}
+
+bool Application::needsContinuousRender() const noexcept {
+    // Auto-rotation advances yaw every frame.
+    if (m_3dModeEnabled && m_3dAutoRotate) return true;
+    // Async file load needs polling each frame.
+    if (m_isLoadingFile) return true;
+    // Pending data recomputation.
+    if (m_matrixDirty) return true;
+    return false;
 }
 
 void Application::updateSeekFromPlot(float originX, float originY, float plotSize) {

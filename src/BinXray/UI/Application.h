@@ -90,6 +90,9 @@ private:
     void updateSeekFromPlot(float originX, float originY, float plotSize);
     void invalidateSeek();
 
+    /// True when ongoing animation or async work requires per-frame rendering.
+    [[nodiscard]] bool needsContinuousRender() const noexcept;
+
     // ---- D3D11 lifecycle ----------------------------------------------------
     bool createDeviceD3D(HWND hWnd);
     void cleanupDeviceD3D();
