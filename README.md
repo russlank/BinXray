@@ -19,7 +19,7 @@ A companion **3D byte-trigram scatter plot** extends the analysis into three dim
 
 ![Bin X-Ray – 2D transition plot](doc/images/screenshot-04.png)
 
-![Bin X-Ray – 3D trigram scatter plot](doc/images/screenshot-05.png)
+![Bin X-Ray – 3D trigram scatter plot](doc/images/screenshot-06.png)
 
 ## Features
 
