@@ -13,9 +13,9 @@
 
 ## Screenshots
 
-![Bin X-Ray](doc/images/screenshot-01.png)
+![Bin X-Ray](doc/images/screenshot-04.png)
 
-![Bin X-Ray](doc/images/screenshot-02.png)
+![Bin X-Ray](doc/images/screenshot-05.png)
 
 
 ## Current Phase
