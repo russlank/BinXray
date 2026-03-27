@@ -112,4 +112,13 @@ constexpr float kMatrixPlotMarginTop  = 20.0F;
 constexpr float kRibbonLeftMargin  = 10.0F;
 constexpr float kRibbonRightMargin = 70.0F;
 
+// ── 3D Trigram plot ───────────────────────────────────────────────────────────
+/// Interactive 3D byte-trigram scatter plot rendered via ImDrawList projection.
+constexpr float k3DPlotPointSize       = 2.0F;     ///< Pixel radius of each trigram dot.
+constexpr float k3DPlotDefaultYaw      = 0.78F;    ///< Initial yaw   (radians, ~45°).
+constexpr float k3DPlotDefaultPitch    = 0.52F;    ///< Initial pitch  (radians, ~30°).
+constexpr float k3DPlotRotationSpeed   = 0.005F;   ///< Radians per mouse-pixel drag.
+constexpr ImU32 k3DPlotAxisColor       = IM_COL32(120, 120, 120, 180);
+constexpr ImU32 k3DPlotBgColor         = IM_COL32( 10,  12,  18, 255);
+
 } // namespace BinXray::UI::Constants

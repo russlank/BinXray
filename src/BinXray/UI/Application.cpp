@@ -99,6 +99,7 @@ Application::Application()
       m_scaleEnabled(false),
       m_normalizeEnabled(false),
       m_heatMapEnabled(false),
+      m_3dModeEnabled(false),
       m_fullViewEnabled(true),
       m_blockSize(Constants::kBlockSizeDefault),
       m_windowStartOffset(0),
@@ -110,7 +111,10 @@ Application::Application()
       m_ribbonWidth(Constants::kRibbonWidthDefault),
       m_hexViewPanel(),
       m_seek(),
-      m_seekScrollTarget() {
+      m_seekScrollTarget(),
+      m_trigramPlot(),
+      m_3dYaw(Constants::k3DPlotDefaultYaw),
+      m_3dPitch(Constants::k3DPlotDefaultPitch) {
     m_matrixLuminance.fill(0);
 }
 
@@ -428,6 +432,10 @@ void Application::rebuildMatrixIfDirty() {
         ? Core::TransitionMatrix::RenderMode::Binary
         : (m_normalizeEnabled ? Core::TransitionMatrix::RenderMode::Normalized : Core::TransitionMatrix::RenderMode::Linear);
     m_transitionMatrix.renderLuminance(mode, m_matrixLuminance);
+
+    // Also recompute the trigram plot (shares the same data range).
+    m_trigramPlot.compute(bytes, start, end);
+
     m_matrixDirty = false;
 }
 
@@ -628,6 +636,10 @@ void Application::drawControlsColumn() {
 
     ImGui::Checkbox("Heat Map", &m_heatMapEnabled);
 
+    if (ImGui::Checkbox("3D Mode", &m_3dModeEnabled)) {
+        m_matrixDirty = true;
+    }
+
     controlsChanged = ImGui::Checkbox("Full View", &m_fullViewEnabled) || controlsChanged;
     if (ImGui::InputInt("Block Size", &m_blockSize, Constants::kBlockSizeStep, Constants::kBlockSizeFastStep)) {
         m_blockSize = std::max(Constants::kBlockSizeMin, m_blockSize);
@@ -818,6 +830,141 @@ void Application::drawMatrixPlot() {
     }
 }
 
+void Application::draw3DPlot() {
+    const auto& bytes = m_document.bytes();
+    if (bytes.empty()) {
+        ImGui::TextUnformatted("No data loaded.");
+        return;
+    }
+
+    ImGui::TextUnformatted("Trigram Plot (256 x 256 x 256)");
+    ImGui::Separator();
+
+    const ImVec2 available = ImGui::GetContentRegionAvail();
+    const float plotSize = std::max(Constants::kMatrixPlotMinSize,
+        std::min(available.x, available.y));
+    const ImVec2 canvasOrigin = ImGui::GetCursorScreenPos();
+    ImGui::InvisibleButton("TrigramPlotCanvas", ImVec2(plotSize, plotSize));
+
+    const bool isHovered = ImGui::IsItemHovered();
+
+    // Mouse-drag rotation.
+    if (isHovered && ImGui::IsMouseDragging(ImGuiMouseButton_Left)) {
+        const ImVec2 delta = ImGui::GetIO().MouseDelta;
+        m_3dYaw   += delta.x * Constants::k3DPlotRotationSpeed;
+        m_3dPitch += delta.y * Constants::k3DPlotRotationSpeed;
+        // Clamp pitch to avoid gimbal flip.
+        constexpr float kPitchMax = 1.50F; // ~86°
+        m_3dPitch = std::clamp(m_3dPitch, -kPitchMax, kPitchMax);
+    }
+
+    // Reset on double-click.
+    if (isHovered && ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left)) {
+        m_3dYaw   = Constants::k3DPlotDefaultYaw;
+        m_3dPitch = Constants::k3DPlotDefaultPitch;
+    }
+
+    // Precompute rotation sin/cos.
+    const float cosYaw   = std::cos(m_3dYaw);
+    const float sinYaw   = std::sin(m_3dYaw);
+    const float cosPitch = std::cos(m_3dPitch);
+    const float sinPitch = std::sin(m_3dPitch);
+
+    const float halfPlot = plotSize * 0.5F;
+    const float cx = canvasOrigin.x + halfPlot;
+    const float cy = canvasOrigin.y + halfPlot;
+    // Projection scale so 256-unit cube fits inside the plot.
+    const float scale = plotSize * 0.35F;
+
+    // Lambda: project a [0,255] (x,y,z) coordinate to screen (px, py).
+    auto project = [&](float x, float y, float z, float& px, float& py) {
+        // Centre to [-1,+1].
+        const float nx = (x - 127.5F) / 127.5F;
+        const float ny = (y - 127.5F) / 127.5F;
+        const float nz = (z - 127.5F) / 127.5F;
+        // Apply yaw (around Y axis).
+        const float rx =  cosYaw * nx + sinYaw * nz;
+        const float rz = -sinYaw * nx + cosYaw * nz;
+        // Apply pitch (around X axis).
+        const float ry = cosPitch * ny - sinPitch * rz;
+        const float rz2 = sinPitch * ny + cosPitch * rz;
+        // Orthographic projection (drop Z after rotation).
+        (void)rz2;
+        px = cx + rx * scale;
+        py = cy + ry * scale;
+    };
+
+    ImDrawList* drawList = ImGui::GetWindowDrawList();
+
+    // Background fill.
+    drawList->AddRectFilled(canvasOrigin,
+        ImVec2(canvasOrigin.x + plotSize, canvasOrigin.y + plotSize),
+        Constants::k3DPlotBgColor);
+
+    // Draw wireframe cube edges (12 edges of a unit cube).
+    {
+        constexpr float lo = 0.0F;
+        constexpr float hi = 255.0F;
+        const float corners[8][3] = {
+            {lo,lo,lo},{hi,lo,lo},{hi,hi,lo},{lo,hi,lo},
+            {lo,lo,hi},{hi,lo,hi},{hi,hi,hi},{lo,hi,hi}
+        };
+        constexpr int edges[12][2] = {
+            {0,1},{1,2},{2,3},{3,0},
+            {4,5},{5,6},{6,7},{7,4},
+            {0,4},{1,5},{2,6},{3,7}
+        };
+        for (auto& edge : edges) {
+            float ax, ay, bx, by;
+            project(corners[edge[0]][0], corners[edge[0]][1], corners[edge[0]][2], ax, ay);
+            project(corners[edge[1]][0], corners[edge[1]][1], corners[edge[1]][2], bx, by);
+            drawList->AddLine(ImVec2(ax, ay), ImVec2(bx, by), Constants::k3DPlotAxisColor, 1.0F);
+        }
+
+        // Axis labels at the positive ends.
+        float lx, ly;
+        project(hi + 12.0F, 0.0F, 0.0F, lx, ly);
+        drawList->AddText(ImVec2(lx, ly), Constants::kSeekCoordTextColor, "X");
+        project(0.0F, hi + 12.0F, 0.0F, lx, ly);
+        drawList->AddText(ImVec2(lx, ly), Constants::kSeekCoordTextColor, "Y");
+        project(0.0F, 0.0F, hi + 12.0F, lx, ly);
+        drawList->AddText(ImVec2(lx, ly), Constants::kSeekCoordTextColor, "Z");
+    }
+
+    // Draw trigram points.
+    const auto& points = m_trigramPlot.points();
+    const std::uint32_t maxCount = m_trigramPlot.maxCount();
+    const float ptRad = Constants::k3DPlotPointSize;
+
+    for (const auto& pt : points) {
+        const std::uint8_t intensity = Core::TrigramPlot::mapIntensity(
+            pt.count, maxCount, m_scaleEnabled, m_normalizeEnabled);
+        if (intensity == 0) continue;
+
+        const ImU32 color = m_heatMapEnabled
+            ? intensityToHeatMap(intensity)
+            : IM_COL32(intensity, intensity, intensity, 255);
+
+        float px, py;
+        project(static_cast<float>(pt.x),
+                static_cast<float>(pt.y),
+                static_cast<float>(pt.z), px, py);
+
+        // Clip to canvas bounds.
+        if (px < canvasOrigin.x || px > canvasOrigin.x + plotSize ||
+            py < canvasOrigin.y || py > canvasOrigin.y + plotSize) {
+            continue;
+        }
+        drawList->AddRectFilled(ImVec2(px - ptRad, py - ptRad),
+                                ImVec2(px + ptRad, py + ptRad), color);
+    }
+
+    // Border.
+    drawList->AddRect(canvasOrigin,
+        ImVec2(canvasOrigin.x + plotSize, canvasOrigin.y + plotSize),
+        Constants::kMatrixBorderColor, 0.0F, 0, 1.0F);
+}
+
 void Application::drawSeekAddressList() {
     if (!m_seek.seekEnabled || !m_seek.valid || m_seek.result.offsets.empty()) {
         ImGui::TextDisabled("No addresses");
@@ -850,7 +997,11 @@ void Application::drawCenterColumn() {
     const float plotHeight  = std::max(Constants::kMatrixPlotMinHeight, totalHeight * Constants::kMatrixPlotHeightRatio);
 
     ImGui::BeginChild("MatrixView", ImVec2(0.0F, plotHeight), true);
-    drawMatrixPlot();
+    if (m_3dModeEnabled) {
+        draw3DPlot();
+    } else {
+        drawMatrixPlot();
+    }
     ImGui::EndChild();
 
     ImGui::Spacing();

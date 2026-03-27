@@ -134,6 +134,7 @@
     <ClCompile Include="..\BinXray\Core\BinaryDocument.cpp" />
     <ClCompile Include="..\BinXray\Core\TransitionMatrix.cpp" />
     <ClCompile Include="..\BinXray\Core\TransitionSeeker.cpp" />
+    <ClCompile Include="..\BinXray\Core\TrigramPlot.cpp" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets" />

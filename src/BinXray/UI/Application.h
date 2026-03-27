@@ -30,6 +30,7 @@ struct ID3D11RenderTargetView;
 #include "Core/BinaryDocument.h"
 #include "Core/TransitionMatrix.h"
 #include "Core/TransitionSeeker.h"
+#include "Core/TrigramPlot.h"
 #include "UI/HexViewPanel.h"
 
 #include <future>
@@ -81,6 +82,7 @@ private:
     void drawControlsColumn();
     void drawCenterColumn();
     void drawMatrixPlot();
+    void draw3DPlot();
     void drawSeekAddressList();
     void drawRibbonColumn();
 
@@ -114,6 +116,7 @@ private:
     bool m_scaleEnabled;
     bool m_normalizeEnabled;
     bool m_heatMapEnabled;
+    bool m_3dModeEnabled;
     bool m_fullViewEnabled;
     int m_blockSize;
     std::size_t m_windowStartOffset;
@@ -131,6 +134,11 @@ private:
     HexViewPanel m_hexViewPanel;
     SeekState m_seek;
     std::optional<std::size_t> m_seekScrollTarget;  ///< One-shot scroll target for hex view.
+
+    // ---- 3D trigram plot state -----------------------------------------------
+    Core::TrigramPlot m_trigramPlot;
+    float m_3dYaw;
+    float m_3dPitch;
 };
 
 } // namespace BinXray::UI
