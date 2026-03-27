@@ -1,4 +1,11 @@
 // SPDX-License-Identifier: MIT
+//
+// UIConstants.h
+//
+// Centralised compile-time constants for the BinXray UI layer.
+// Grouping all magic numbers here keeps the rendering code clean
+// and makes visual tuning straightforward.
+//
 #pragma once
 
 #include "imgui.h"
@@ -9,15 +16,19 @@
 namespace BinXray::UI::Constants {
 
 // ── Window ───────────────────────────────────────────────────────────────────
+/// Default position and size for the main application window.
 constexpr int kWindowInitialX      = 100;
 constexpr int kWindowInitialY      = 100;
 constexpr int kWindowInitialWidth  = 1600;
 constexpr int kWindowInitialHeight = 900;
 
 // ── Background clear colour ───────────────────────────────────────────────────
+/// RGBA float colour used to clear the D3D11 render target each frame.
 constexpr float kClearColor[4] = {0.08F, 0.10F, 0.14F, 1.0F};
 
 // ── Layout columns ────────────────────────────────────────────────────────────
+/// Three-column workspace: left controls, centre views, right ribbon.
+/// Ratios are proportions of viewport width; Min/Max are pixel clamps.
 constexpr float kLeftColumnRatio    = 0.22F;
 constexpr float kLeftColumnMin      = 220.0F;
 constexpr float kLeftColumnMax      = 360.0F;
@@ -29,12 +40,16 @@ constexpr float kLeftColumnHardMin  = 180.0F;
 constexpr float kRightColumnHardMin = 160.0F;
 
 // ── Matrix plot ───────────────────────────────────────────────────────────────
+/// The transition plot is rendered as a square InvisibleButton with this
+/// minimum size, occupying a proportion of the centre column height.
 constexpr float kMatrixPlotMinSize     = 64.0F;
 constexpr float kMatrixPlotMinHeight   = 280.0F;
 constexpr float kMatrixPlotHeightRatio = 0.58F;
 constexpr ImU32 kMatrixBorderColor     = IM_COL32(200, 200, 200, 255);
 
 // ── Ribbon ────────────────────────────────────────────────────────────────────
+/// The bitmap ribbon visualises every byte of the file as a coloured pixel.
+/// Default width is 128 columns (matching legacy BinView).
 constexpr int            kRibbonWidthDefault    = 128;
 constexpr int            kRibbonWidthMin        =   4;
 constexpr int            kRibbonWidthMax        = 1024;
@@ -45,14 +60,16 @@ constexpr ImU32          kRibbonHighlightFill   = IM_COL32(255, 220,  70,  28);
 constexpr ImU32          kRibbonHighlightBorder = IM_COL32(255, 220,  70, 180);
 constexpr std::uint8_t   kRibbonByteColorR      = 32;
 constexpr std::uint8_t   kRibbonByteColorB      = 64;
+/// Red triangle / label colours used to indicate the selected byte in the ribbon.
 constexpr ImU32          kRibbonCursorColor      = IM_COL32(220,  50,  50, 230);
 constexpr ImU32          kRibbonCursorLabelBg    = IM_COL32(220,  50,  50, 200);
 constexpr ImU32          kRibbonCursorLabelText  = IM_COL32(255, 255, 255, 255);
 constexpr float          kRibbonCursorTriSize    = 7.0F;
 
 // ── Hex view ──────────────────────────────────────────────────────────────────
+/// The hex view is rendered with ImGuiListClipper for virtualized scrolling.
 constexpr std::size_t kHexBytesPerRow          = 16;
-constexpr std::size_t kHexMaxVisibleBytes      = 4096;
+constexpr std::size_t kHexMaxVisibleBytes      = 4096;  ///< Legacy cap (unused with clipper).
 constexpr ImU32       kHexSelectedColor        = IM_COL32( 55, 120, 220, 255);
 constexpr ImU32       kHexSelectedHoveredColor = IM_COL32( 75, 140, 240, 255);
 
@@ -64,6 +81,8 @@ constexpr int    kBlockSizeStep    =   256;
 constexpr int    kBlockSizeFastStep =  2048;
 
 // ── Seeking overlay ───────────────────────────────────────────────────────────
+/// Crosshair, coordinate labels, and highlight colours for the seeking feature
+/// that links the transition plot to file offsets.
 constexpr ImU32  kSeekCrosshairColor       = IM_COL32(255, 200,  50, 200);
 constexpr ImU32  kSeekCoordTextColor       = IM_COL32(255, 220, 100, 255);
 constexpr ImU32  kSeekCoordBgColor         = IM_COL32( 30,  30,  30, 200);
@@ -74,7 +93,7 @@ constexpr ImU32  kHexSeekHighlightHovered  = IM_COL32(220, 180,  60, 255);
 constexpr float  kSeekCrosshairThickness   = 1.0F;
 constexpr float  kSeekCoordFontScale       = 0.85F;
 constexpr std::size_t kSeekMaxAddresses    = 256;
-constexpr float  kSeekAddressPanelWidth    = 130.0F;
-constexpr int    kSeekSnapMaxRadius        = 24;
+constexpr float  kSeekAddressPanelWidth    = 130.0F;  ///< Width of the address list beside the hex view.
+constexpr int    kSeekSnapMaxRadius        = 24;       ///< Chebyshev radius for snap-to-data search.
 
 } // namespace BinXray::UI::Constants

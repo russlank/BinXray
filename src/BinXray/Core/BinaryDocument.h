@@ -1,4 +1,11 @@
 // SPDX-License-Identifier: MIT
+//
+// BinaryDocument.h
+//
+// Owns the in-memory copy of a loaded binary file.  Provides a static
+// helper (`loadFileBytes`) suitable for background loading via
+// `std::async`, and a non-static `loadFromFile` convenience wrapper.
+//
 #pragma once
 
 #include <cstdint>

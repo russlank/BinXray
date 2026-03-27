@@ -1,10 +1,17 @@
 // SPDX-License-Identifier: MIT
+//
+// main.cpp  --  test runner entry point.
+//
+// Each runXxxTests() function returns true on success.  The process exit
+// code reflects the number of failed suites, so CI can gate on it.
+//
 
 #include <iostream>
 
 bool runByteFormatterTests();
 bool runBinaryDocumentTests();
 bool runTransitionMatrixTests();
+bool runTransitionSeekerTests();
 
 int main() {
     int failedSuites = 0;
@@ -18,6 +25,10 @@ int main() {
     }
 
     if (!runTransitionMatrixTests()) {
+        ++failedSuites;
+    }
+
+    if (!runTransitionSeekerTests()) {
         ++failedSuites;
     }
 

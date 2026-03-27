@@ -1,4 +1,8 @@
 // SPDX-License-Identifier: MIT
+//
+// Application.cpp  --  main application lifecycle, workspace layout, and
+//                       panel composition for the BinXray binary analyser.
+//
 
 #include "Application.h"
 
@@ -899,11 +903,24 @@ void Application::drawRibbonColumn() {
             2.0F);
     }
 
-    if (!m_fullViewEnabled && ImGui::IsItemHovered() && (ImGui::IsMouseDown(ImGuiMouseButton_Left) || ImGui::IsMouseClicked(ImGuiMouseButton_Left))) {
+    // Handle click on ribbon to select byte offset and scroll hex view.
+    if (ImGui::IsItemHovered() && ImGui::IsMouseClicked(ImGuiMouseButton_Left)) {
+        const float localX = std::clamp(ImGui::GetMousePos().x - contentOrigin.x, 0.0F, contentWidth - 1.0F);
+        const float localY = std::clamp(ImGui::GetMousePos().y - contentOrigin.y, 0.0F, contentHeight - 1.0F);
+        const auto clickCol = static_cast<std::size_t>(localX / pixelScale);
+        const auto clickRow = static_cast<std::size_t>(localY / pixelScale);
+        const std::size_t clickOffset = clickRow * ribbonWidth + std::min(clickCol, ribbonWidth - 1);
+        if (clickOffset < bytes.size()) {
+            m_selectedOffset = clickOffset;
+            m_seekScrollTarget = clickOffset;
+        }
+    }
+
+    // Handle drag on ribbon to scrub the analysis window (non-Full-View mode).
+    if (!m_fullViewEnabled && ImGui::IsItemHovered() && ImGui::IsMouseDown(ImGuiMouseButton_Left)) {
         const float localY = std::clamp(ImGui::GetMousePos().y - contentOrigin.y, 0.0F, contentHeight - 1.0F);
         const float normalizedY = (contentHeight <= 1.0F) ? 0.0F : (localY / contentHeight);
         const std::size_t centerOffset = static_cast<std::size_t>(normalizedY * static_cast<float>(bytes.size() - 1));
-        m_selectedOffset = centerOffset;
         setWindowFromCenter(centerOffset);
     }
 

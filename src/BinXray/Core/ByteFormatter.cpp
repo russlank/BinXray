@@ -1,4 +1,7 @@
 // SPDX-License-Identifier: MIT
+//
+// ByteFormatter.cpp  --  hex formatting utilities.
+//
 
 #include "ByteFormatter.h"
 

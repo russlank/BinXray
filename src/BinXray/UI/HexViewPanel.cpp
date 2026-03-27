@@ -1,4 +1,7 @@
 // SPDX-License-Identifier: MIT
+//
+// HexViewPanel.cpp  --  virtualised hex dump with seek-offset highlighting.
+//
 
 #include "HexViewPanel.h"
 
