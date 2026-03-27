@@ -129,9 +129,11 @@
     <ClCompile Include="ByteFormatterTests.cpp" />
     <ClCompile Include="BinaryDocumentTests.cpp" />
     <ClCompile Include="TransitionMatrixTests.cpp" />
+    <ClCompile Include="TransitionSeekerTests.cpp" />
     <ClCompile Include="..\BinXray\Core\ByteFormatter.cpp" />
     <ClCompile Include="..\BinXray\Core\BinaryDocument.cpp" />
     <ClCompile Include="..\BinXray\Core\TransitionMatrix.cpp" />
+    <ClCompile Include="..\BinXray\Core\TransitionSeeker.cpp" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets" />

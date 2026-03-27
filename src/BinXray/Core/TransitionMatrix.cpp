@@ -1,4 +1,7 @@
 // SPDX-License-Identifier: MIT
+//
+// TransitionMatrix.cpp  --  256x256 byte-pair transition density matrix.
+//
 
 #include "TransitionMatrix.h"
 

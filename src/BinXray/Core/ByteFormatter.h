@@ -1,4 +1,9 @@
 // SPDX-License-Identifier: MIT
+//
+// ByteFormatter.h
+//
+// Lightweight formatting helpers for hex display of byte values and offsets.
+//
 #pragma once
 
 #include <cstddef>

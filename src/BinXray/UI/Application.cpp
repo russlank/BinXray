@@ -1,4 +1,8 @@
 // SPDX-License-Identifier: MIT
+//
+// Application.cpp  --  main application lifecycle, workspace layout, and
+//                       panel composition for the BinXray binary analyser.
+//
 
 #include "Application.h"
 
@@ -13,6 +17,7 @@
 #include <algorithm>
 #include <chrono>
 #include <cmath>
+#include <cstdio>
 #include <commdlg.h>
 #include <d3d11.h>
 #include <dxgi.h>
@@ -73,7 +78,9 @@ Application::Application()
       m_loadingPath(),
       m_lastLoadError(),
       m_ribbonWidth(Constants::kRibbonWidthDefault),
-      m_hexViewPanel() {
+      m_hexViewPanel(),
+      m_seek(),
+      m_seekScrollTarget() {
     m_matrixLuminance.fill(0);
 }
 
@@ -323,6 +330,7 @@ void Application::refreshRangeAfterDocumentChange() {
         m_windowStartOffset = 0;
         m_windowEndOffset = 0;
         m_matrixDirty = true;
+        invalidateSeek();
         return;
     }
 
@@ -335,6 +343,7 @@ void Application::refreshRangeAfterDocumentChange() {
     }
 
     m_matrixDirty = true;
+    invalidateSeek();
 }
 
 void Application::setWindowFromCenter(std::size_t centerOffset) {
@@ -390,6 +399,97 @@ void Application::rebuildMatrixIfDirty() {
         : (m_normalizeEnabled ? Core::TransitionMatrix::RenderMode::Normalized : Core::TransitionMatrix::RenderMode::Linear);
     m_transitionMatrix.renderLuminance(mode, m_matrixLuminance);
     m_matrixDirty = false;
+}
+
+void Application::invalidateSeek() {
+    if (!m_seek.frozen) {
+        m_seek.valid = false;
+        m_seek.result = {};
+    }
+}
+
+void Application::updateSeekFromPlot(float originX, float originY, float plotSize) {
+    if (!m_seek.seekEnabled || m_seek.frozen) {
+        return;
+    }
+
+    const ImVec2 mousePos = ImGui::GetMousePos();
+    const float localX = mousePos.x - originX;
+    const float localY = mousePos.y - originY;
+
+    if (localX < 0.0F || localX >= plotSize || localY < 0.0F || localY >= plotSize) {
+        m_seek.valid = false;
+        m_seek.result = {};
+        return;
+    }
+
+    constexpr float dim = static_cast<float>(Core::TransitionMatrix::kDimension);
+    auto col = static_cast<int>(std::clamp(localX * dim / plotSize, 0.0F, 255.0F));
+    auto row = static_cast<int>(std::clamp(localY * dim / plotSize, 0.0F, 255.0F));
+
+    // Snap to nearest non-empty cell when enabled.
+    if (m_seek.snapEnabled &&
+        m_transitionMatrix.count(static_cast<std::uint8_t>(row),
+                                 static_cast<std::uint8_t>(col)) == 0) {
+        float bestDistSq = 256.0F * 256.0F * 2.0F;
+        int bestRow = -1;
+        int bestCol = -1;
+        const int maxR = Constants::kSeekSnapMaxRadius;
+        for (int r = 1; r <= maxR; ++r) {
+            bool found = false;
+            for (int dr = -r; dr <= r; ++dr) {
+                for (int dc = -r; dc <= r; ++dc) {
+                    if (std::abs(dr) != r && std::abs(dc) != r) {
+                        continue;
+                    }
+                    const int cr = row + dr;
+                    const int cc = col + dc;
+                    if (cr < 0 || cr >= 256 || cc < 0 || cc >= 256) {
+                        continue;
+                    }
+                    if (m_transitionMatrix.count(static_cast<std::uint8_t>(cr),
+                                                 static_cast<std::uint8_t>(cc)) > 0) {
+                        const float dSq = static_cast<float>(dr * dr + dc * dc);
+                        if (dSq < bestDistSq) {
+                            bestDistSq = dSq;
+                            bestRow = cr;
+                            bestCol = cc;
+                            found = true;
+                        }
+                    }
+                }
+            }
+            if (found) {
+                break;
+            }
+        }
+        if (bestRow >= 0) {
+            row = bestRow;
+            col = bestCol;
+        } else {
+            m_seek.valid = false;
+            m_seek.result = {};
+            return;
+        }
+    }
+
+    const auto fromByte = static_cast<std::uint8_t>(row);
+    const auto toByte = static_cast<std::uint8_t>(col);
+
+    // Avoid redundant re-scan when cursor stays on the same cell.
+    if (m_seek.valid && m_seek.fromByte == fromByte && m_seek.toByte == toByte) {
+        return;
+    }
+
+    m_seek.fromByte = fromByte;
+    m_seek.toByte = toByte;
+    m_seek.valid = true;
+    m_seek.result = Core::findTransitionOffsets(
+        m_document.bytes(),
+        m_transitionMatrix.startOffset(),
+        m_transitionMatrix.endOffset(),
+        fromByte, toByte,
+        Constants::kSeekMaxAddresses);
 }
 
 bool Application::createDeviceD3D(HWND hWnd) {
@@ -507,6 +607,41 @@ void Application::drawControlsColumn() {
         m_ribbonWidth = std::clamp(m_ribbonWidth, Constants::kRibbonWidthMin, Constants::kRibbonWidthMax);
     }
 
+    ImGui::Separator();
+    ImGui::TextUnformatted("Seeking");
+    if (ImGui::Checkbox("Enable Seeking", &m_seek.seekEnabled)) {
+        if (!m_seek.seekEnabled) {
+            m_seek.frozen = false;
+            m_seek.valid = false;
+            m_seek.result = {};
+        }
+    }
+
+    ImGui::BeginDisabled(!m_seek.seekEnabled);
+    ImGui::Checkbox("Show Coordinates", &m_seek.coordEnabled);
+    ImGui::Checkbox("Snap to Data", &m_seek.snapEnabled);
+
+    if (m_seek.frozen) {
+        if (ImGui::Button("Unfreeze", ImVec2(-1.0F, 0.0F))) {
+            m_seek.frozen = false;
+        }
+    } else {
+        ImGui::BeginDisabled(!m_seek.valid);
+        if (ImGui::Button("Freeze", ImVec2(-1.0F, 0.0F))) {
+            m_seek.frozen = true;
+        }
+        ImGui::EndDisabled();
+    }
+    ImGui::EndDisabled();
+
+    if (m_seek.valid) {
+        ImGui::Text("Pair: 0x%02X -> 0x%02X", m_seek.fromByte, m_seek.toByte);
+        ImGui::Text("Count: %u", m_seek.result.transitionCount);
+        if (m_seek.result.offsets.size() < m_seek.result.transitionCount) {
+            ImGui::Text("(showing first %zu)", m_seek.result.offsets.size());
+        }
+    }
+
     if (controlsChanged) {
         refreshRangeAfterDocumentChange();
     }
@@ -547,6 +682,21 @@ void Application::drawMatrixPlot() {
     const ImVec2 origin = ImGui::GetCursorScreenPos();
     ImGui::InvisibleButton("TransitionPlotCanvas", ImVec2(plotSize, plotSize));
 
+    const bool isHovered = ImGui::IsItemHovered();
+
+    // Handle click-to-freeze / click-to-unfreeze toggle.
+    if (m_seek.seekEnabled && isHovered && ImGui::IsMouseClicked(ImGuiMouseButton_Left)) {
+        m_seek.frozen = !m_seek.frozen;
+    }
+
+    // Live-update seek when hovering and not frozen.
+    if (isHovered) {
+        updateSeekFromPlot(origin.x, origin.y, plotSize);
+    } else if (!m_seek.frozen) {
+        m_seek.valid = false;
+        m_seek.result = {};
+    }
+
     ImDrawList* drawList = ImGui::GetWindowDrawList();
     const float cellSize = plotSize / static_cast<float>(Core::TransitionMatrix::kDimension);
     for (std::size_t i = 0; i < Core::TransitionMatrix::kCellCount; ++i) {
@@ -563,6 +713,76 @@ void Application::drawMatrixPlot() {
     }
 
     drawList->AddRect(origin, ImVec2(origin.x + plotSize, origin.y + plotSize), Constants::kMatrixBorderColor, 0.0F, 0, 1.0F);
+
+    // Draw seeking crosshair and coordinate labels.
+    if (m_seek.seekEnabled && m_seek.valid && (m_seek.coordEnabled || m_seek.frozen)) {
+        const float crossX = origin.x + (static_cast<float>(m_seek.toByte) + 0.5F) * cellSize;
+        const float crossY = origin.y + (static_cast<float>(m_seek.fromByte) + 0.5F) * cellSize;
+
+        if (m_seek.coordEnabled) {
+            // Vertical line (column = toByte).
+            drawList->AddLine(ImVec2(crossX, origin.y), ImVec2(crossX, origin.y + plotSize),
+                              Constants::kSeekCrosshairColor, Constants::kSeekCrosshairThickness);
+            // Horizontal line (row = fromByte).
+            drawList->AddLine(ImVec2(origin.x, crossY), ImVec2(origin.x + plotSize, crossY),
+                              Constants::kSeekCrosshairColor, Constants::kSeekCrosshairThickness);
+
+            // Coordinate labels at the edges.
+            char rowLabel[8];
+            char colLabel[8];
+            std::snprintf(rowLabel, sizeof(rowLabel), "%02X", m_seek.fromByte);
+            std::snprintf(colLabel, sizeof(colLabel), "%02X", m_seek.toByte);
+
+            const ImVec2 rowLabelSize = ImGui::CalcTextSize(rowLabel);
+            const ImVec2 colLabelSize = ImGui::CalcTextSize(colLabel);
+            const float pad = 2.0F;
+
+            // Row label: left of the plot, vertically centered on crosshair.
+            const ImVec2 rowLabelPos(origin.x - rowLabelSize.x - pad, crossY - rowLabelSize.y * 0.5F);
+            drawList->AddRectFilled(ImVec2(rowLabelPos.x - pad, rowLabelPos.y - pad),
+                                    ImVec2(rowLabelPos.x + rowLabelSize.x + pad, rowLabelPos.y + rowLabelSize.y + pad),
+                                    Constants::kSeekCoordBgColor);
+            drawList->AddText(rowLabelPos, Constants::kSeekCoordTextColor, rowLabel);
+
+            // Column label: above the plot, horizontally centered on crosshair.
+            const ImVec2 colLabelPos(crossX - colLabelSize.x * 0.5F, origin.y - colLabelSize.y - pad);
+            drawList->AddRectFilled(ImVec2(colLabelPos.x - pad, colLabelPos.y - pad),
+                                    ImVec2(colLabelPos.x + colLabelSize.x + pad, colLabelPos.y + colLabelSize.y + pad),
+                                    Constants::kSeekCoordBgColor);
+            drawList->AddText(colLabelPos, Constants::kSeekCoordTextColor, colLabel);
+        }
+
+        // Highlight the specific cell.
+        const float cellX0 = origin.x + static_cast<float>(m_seek.toByte) * cellSize;
+        const float cellY0 = origin.y + static_cast<float>(m_seek.fromByte) * cellSize;
+        drawList->AddRect(ImVec2(cellX0, cellY0), ImVec2(cellX0 + cellSize, cellY0 + cellSize),
+                          Constants::kSeekHighlightBorder, 0.0F, 0, 2.0F);
+    }
+}
+
+void Application::drawSeekAddressList() {
+    if (!m_seek.seekEnabled || !m_seek.valid || m_seek.result.offsets.empty()) {
+        ImGui::TextDisabled("No addresses");
+        return;
+    }
+
+    ImGui::Text("0x%02X -> 0x%02X (%u)",
+                m_seek.fromByte, m_seek.toByte, m_seek.result.transitionCount);
+    if (m_seek.result.offsets.size() < m_seek.result.transitionCount) {
+        ImGui::TextDisabled("first %zu shown", m_seek.result.offsets.size());
+    }
+    ImGui::Separator();
+
+    ImGui::BeginChild("SeekAddrScroll");
+    for (const std::size_t offset : m_seek.result.offsets) {
+        char addrBuf[20];
+        std::snprintf(addrBuf, sizeof(addrBuf), "0x%08zX", offset);
+        if (ImGui::Selectable(addrBuf, offset == m_selectedOffset)) {
+            m_selectedOffset = offset;
+            m_seekScrollTarget = offset;
+        }
+    }
+    ImGui::EndChild();
 }
 
 void Application::drawCenterColumn() {
@@ -576,15 +796,49 @@ void Application::drawCenterColumn() {
     ImGui::EndChild();
 
     ImGui::Spacing();
-    ImGui::BeginChild("HexView", ImVec2(0.0F, 0.0F), true);
-    ImGui::TextUnformatted("Hex View");
-    ImGui::Separator();
-    m_hexViewPanel.drawEmbedded(
-        m_document,
-        m_selectedOffset,
-        m_transitionMatrix.startOffset(),
-        m_transitionMatrix.endOffset());
-    ImGui::EndChild();
+
+    const std::vector<std::size_t>* seekOffsets =
+        (m_seek.seekEnabled && m_seek.valid && !m_seek.result.offsets.empty())
+            ? &m_seek.result.offsets : nullptr;
+
+    const bool showAddresses = seekOffsets != nullptr;
+
+    if (showAddresses) {
+        const float spacing   = ImGui::GetStyle().ItemSpacing.x;
+        const float fullWidth = ImGui::GetContentRegionAvail().x;
+        const float addrWidth = Constants::kSeekAddressPanelWidth;
+        const float hexWidth  = fullWidth - addrWidth - spacing;
+
+        ImGui::BeginChild("HexView", ImVec2(hexWidth, 0.0F), true);
+        ImGui::TextUnformatted("Hex View");
+        ImGui::Separator();
+        m_hexViewPanel.drawEmbedded(
+            m_document, m_selectedOffset,
+            m_transitionMatrix.startOffset(),
+            m_transitionMatrix.endOffset(),
+            seekOffsets, m_seekScrollTarget);
+        m_seekScrollTarget.reset();
+        ImGui::EndChild();
+
+        ImGui::SameLine();
+
+        ImGui::BeginChild("SeekAddresses", ImVec2(0.0F, 0.0F), true);
+        ImGui::TextUnformatted("Addresses");
+        ImGui::Separator();
+        drawSeekAddressList();
+        ImGui::EndChild();
+    } else {
+        ImGui::BeginChild("HexView", ImVec2(0.0F, 0.0F), true);
+        ImGui::TextUnformatted("Hex View");
+        ImGui::Separator();
+        m_hexViewPanel.drawEmbedded(
+            m_document, m_selectedOffset,
+            m_transitionMatrix.startOffset(),
+            m_transitionMatrix.endOffset(),
+            seekOffsets, m_seekScrollTarget);
+        m_seekScrollTarget.reset();
+        ImGui::EndChild();
+    }
 }
 
 void Application::drawRibbonColumn() {
@@ -649,12 +903,84 @@ void Application::drawRibbonColumn() {
             2.0F);
     }
 
-    if (!m_fullViewEnabled && ImGui::IsItemHovered() && (ImGui::IsMouseDown(ImGuiMouseButton_Left) || ImGui::IsMouseClicked(ImGuiMouseButton_Left))) {
+    // Handle click on ribbon to select byte offset and scroll hex view.
+    if (ImGui::IsItemHovered() && ImGui::IsMouseClicked(ImGuiMouseButton_Left)) {
+        const float localX = std::clamp(ImGui::GetMousePos().x - contentOrigin.x, 0.0F, contentWidth - 1.0F);
+        const float localY = std::clamp(ImGui::GetMousePos().y - contentOrigin.y, 0.0F, contentHeight - 1.0F);
+        const auto clickCol = static_cast<std::size_t>(localX / pixelScale);
+        const auto clickRow = static_cast<std::size_t>(localY / pixelScale);
+        const std::size_t clickOffset = clickRow * ribbonWidth + std::min(clickCol, ribbonWidth - 1);
+        if (clickOffset < bytes.size()) {
+            m_selectedOffset = clickOffset;
+            m_seekScrollTarget = clickOffset;
+        }
+    }
+
+    // Handle drag on ribbon to scrub the analysis window (non-Full-View mode).
+    if (!m_fullViewEnabled && ImGui::IsItemHovered() && ImGui::IsMouseDown(ImGuiMouseButton_Left)) {
         const float localY = std::clamp(ImGui::GetMousePos().y - contentOrigin.y, 0.0F, contentHeight - 1.0F);
         const float normalizedY = (contentHeight <= 1.0F) ? 0.0F : (localY / contentHeight);
         const std::size_t centerOffset = static_cast<std::size_t>(normalizedY * static_cast<float>(bytes.size() - 1));
-        m_selectedOffset = centerOffset;
         setWindowFromCenter(centerOffset);
+    }
+
+    // Overlay seeking highlight on matching byte positions in the ribbon.
+    if (m_seek.seekEnabled && m_seek.valid && !m_seek.result.offsets.empty()) {
+        for (const std::size_t offset : m_seek.result.offsets) {
+            if (offset >= bytes.size()) {
+                continue;
+            }
+            const std::size_t seekRow = offset / ribbonWidth;
+            const std::size_t seekCol = offset % ribbonWidth;
+            if (seekRow < firstVisibleRow || seekRow >= lastVisibleRow) {
+                continue;
+            }
+            const float sx0 = contentOrigin.x + static_cast<float>(seekCol) * pixelScale;
+            const float sy0 = contentOrigin.y + static_cast<float>(seekRow) * pixelScale;
+            drawList->AddRectFilled(ImVec2(sx0, sy0), ImVec2(sx0 + pixelScale, sy0 + pixelScale),
+                                    Constants::kSeekHighlightFill);
+            drawList->AddRect(ImVec2(sx0, sy0), ImVec2(sx0 + pixelScale, sy0 + pixelScale),
+                              Constants::kSeekHighlightBorder, 0.0F, 0, 1.0F);
+        }
+    }
+
+    // Draw cursor pointer triangles for the selected offset.
+    if (m_selectedOffset < bytes.size()) {
+        const std::size_t curRow = m_selectedOffset / ribbonWidth;
+        const std::size_t curCol = m_selectedOffset % ribbonWidth;
+        const float cellCenterX = contentOrigin.x + (static_cast<float>(curCol) + 0.5F) * pixelScale;
+        const float cellCenterY = contentOrigin.y + (static_cast<float>(curRow) + 0.5F) * pixelScale;
+        const float triSz = Constants::kRibbonCursorTriSize;
+        const ImU32 triCol = Constants::kRibbonCursorColor;
+
+        // Left-edge triangle pointing right → row indicator.
+        const float leftX = contentOrigin.x;
+        drawList->AddTriangleFilled(
+            ImVec2(leftX,            cellCenterY - triSz),
+            ImVec2(leftX,            cellCenterY + triSz),
+            ImVec2(leftX + triSz,    cellCenterY),
+            triCol);
+
+        // Right-edge triangle pointing left → row indicator (mirror).
+        const float rightX = contentOrigin.x + contentWidth;
+        drawList->AddTriangleFilled(
+            ImVec2(rightX,           cellCenterY - triSz),
+            ImVec2(rightX,           cellCenterY + triSz),
+            ImVec2(rightX - triSz,   cellCenterY),
+            triCol);
+
+        // Coordinate label between the triangles (right side).
+        char curLabel[24];
+        std::snprintf(curLabel, sizeof(curLabel), "%zu:%zu", curRow, curCol);
+        const ImVec2 labelSize = ImGui::CalcTextSize(curLabel);
+        const float pad = 2.0F;
+        const float labelX = rightX + pad;
+        const float labelY = cellCenterY - labelSize.y * 0.5F;
+        drawList->AddRectFilled(
+            ImVec2(labelX - pad, labelY - pad),
+            ImVec2(labelX + labelSize.x + pad, labelY + labelSize.y + pad),
+            Constants::kRibbonCursorLabelBg, 2.0F);
+        drawList->AddText(ImVec2(labelX, labelY), Constants::kRibbonCursorLabelText, curLabel);
     }
 
     ImGui::EndChild();

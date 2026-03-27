@@ -1,4 +1,7 @@
 // SPDX-License-Identifier: MIT
+//
+// BinaryDocument.cpp  --  binary file loading and in-memory storage.
+//
 
 #include "BinaryDocument.h"
 

@@ -1,4 +1,17 @@
 // SPDX-License-Identifier: MIT
+//
+// Application.h
+//
+// Top-level application class that owns the Win32 window, D3D11 device,
+// ImGui context, binary document, and all panel state.  `initialize()`
+// creates the window and D3D resources; `run()` enters the message loop;
+// `shutdown()` tears everything down.
+//
+// The workspace is rendered as three side-by-side columns:
+//   Left   – controls (file, display options, seeking options).
+//   Centre – transition plot + hex view (+ seek address list when active).
+//   Right  – bitmap ribbon overview with cursor triangles.
+//
 #pragma once
 
 #ifndef WIN32_LEAN_AND_MEAN
@@ -16,13 +29,31 @@ struct ID3D11RenderTargetView;
 
 #include "Core/BinaryDocument.h"
 #include "Core/TransitionMatrix.h"
+#include "Core/TransitionSeeker.h"
 #include "UI/HexViewPanel.h"
 
 #include <future>
 #include <optional>
 #include <string>
+#include <vector>
 
 namespace BinXray::UI {
+
+/// Persistent seek state for the transition-plot crosshair / highlight feature.
+///
+/// The UI layer owns this struct because it tracks presentation concerns
+/// (freeze toggle, coordinate display).  The actual offset scanning lives
+/// in Core::findTransitionOffsets().
+struct SeekState {
+    bool seekEnabled       = false;   ///< Master toggle for the seeking feature.
+    bool coordEnabled      = true;    ///< Show crosshair + coordinate labels.
+    bool snapEnabled       = false;   ///< Snap crosshair to nearest non-empty cell.
+    bool frozen            = false;   ///< True while seek is click-locked.
+    bool valid             = false;   ///< True when fromByte/toByte hold meaningful data.
+    std::uint8_t fromByte  = 0;       ///< Row (previous byte value) under cursor.
+    std::uint8_t toByte    = 0;       ///< Column (current byte value) under cursor.
+    Core::SeekResult result;          ///< Resolved offsets + transition count.
+};
 
 class Application {
 public:
@@ -50,14 +81,20 @@ private:
     void drawControlsColumn();
     void drawCenterColumn();
     void drawMatrixPlot();
+    void drawSeekAddressList();
     void drawRibbonColumn();
 
+    void updateSeekFromPlot(float originX, float originY, float plotSize);
+    void invalidateSeek();
+
+    // ---- D3D11 lifecycle ----------------------------------------------------
     bool createDeviceD3D(HWND hWnd);
     void cleanupDeviceD3D();
     void createRenderTarget();
     void cleanupRenderTarget();
     void renderFrame();
 
+    // ---- Window & device state ----------------------------------------------
     HINSTANCE m_hInstance;
     HWND m_hWnd;
     bool m_running;
@@ -68,6 +105,7 @@ private:
     ID3D11DeviceContext* m_deviceContext;
     ID3D11RenderTargetView* m_mainRenderTargetView;
 
+    // ---- Document & analysis state ------------------------------------------
     Core::BinaryDocument m_document;
     std::size_t m_selectedOffset;
     Core::TransitionMatrix m_transitionMatrix;
@@ -81,13 +119,17 @@ private:
     std::size_t m_windowEndOffset;
     bool m_matrixDirty;
 
+    // ---- Async file I/O ------------------------------------------------------
     bool m_isLoadingFile;
     std::future<Core::BinaryLoadResult> m_asyncLoadFuture;
     std::wstring m_loadingPath;
     std::wstring m_lastLoadError;
 
+    // ---- UI panels & seeking -------------------------------------------------
     int m_ribbonWidth;
     HexViewPanel m_hexViewPanel;
+    SeekState m_seek;
+    std::optional<std::size_t> m_seekScrollTarget;  ///< One-shot scroll target for hex view.
 };
 
 } // namespace BinXray::UI
