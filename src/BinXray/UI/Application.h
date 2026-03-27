@@ -8,8 +8,8 @@
 // `shutdown()` tears everything down.
 //
 // The workspace is rendered as three side-by-side columns:
-//   Left   – controls (file, display options, seeking options).
-//   Centre – transition plot + hex view (+ seek address list when active).
+//   Left   – controls (file, display options, seeking options, 3D rotation).
+//   Centre – transition plot or 3D trigram scatter + hex view (+ seek list).
 //   Right  – bitmap ribbon overview with cursor triangles.
 //
 #pragma once
@@ -82,6 +82,7 @@ private:
     void drawControlsColumn();
     void drawCenterColumn();
     void drawMatrixPlot();
+    /// Render the 3D byte-trigram scatter plot with orthographic projection.
     void draw3DPlot();
     void drawSeekAddressList();
     void drawRibbonColumn();
@@ -116,7 +117,7 @@ private:
     bool m_scaleEnabled;
     bool m_normalizeEnabled;
     bool m_heatMapEnabled;
-    bool m_3dModeEnabled;
+    bool m_3dModeEnabled;          ///< When true, centre column shows trigram scatter instead of 2D matrix.
     bool m_fullViewEnabled;
     int m_blockSize;
     std::size_t m_windowStartOffset;
@@ -136,12 +137,12 @@ private:
     std::optional<std::size_t> m_seekScrollTarget;  ///< One-shot scroll target for hex view.
 
     // ---- 3D trigram plot state -----------------------------------------------
-    Core::TrigramPlot m_trigramPlot;
-    float m_3dYaw;
-    float m_3dPitch;
-    bool  m_3dAutoRotate;
-    float m_3dAutoRotateSpeed;  ///< Degrees per frame.
-    float m_3dElevationDeg;     ///< Adjustable elevation in degrees.
+    Core::TrigramPlot m_trigramPlot;   ///< 256^3 byte-trigram density accumulator.
+    float m_3dYaw;                     ///< Current yaw (radians, wraps at 2pi).
+    float m_3dPitch;                   ///< Current pitch (radians, clamped ±1.5).
+    bool  m_3dAutoRotate;              ///< When true, yaw advances each frame.
+    float m_3dAutoRotateSpeed;         ///< Degrees per frame.
+    float m_3dElevationDeg;            ///< Adjustable elevation in degrees (-89..89).
 };
 
 } // namespace BinXray::UI

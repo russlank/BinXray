@@ -885,7 +885,9 @@ void Application::draw3DPlot() {
     // Auto-rotation: advance yaw each frame; use elevation slider for pitch.
     if (m_3dAutoRotate) {
         constexpr float kDegToRad = 3.14159265F / 180.0F;
+        constexpr float kTwoPi   = 2.0F * 3.14159265F;
         m_3dYaw += m_3dAutoRotateSpeed * kDegToRad;
+        m_3dYaw  = std::fmod(m_3dYaw, kTwoPi);
         m_3dPitch = m_3dElevationDeg * kDegToRad;
     }
 

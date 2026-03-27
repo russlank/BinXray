@@ -12,6 +12,7 @@ bool runByteFormatterTests();
 bool runBinaryDocumentTests();
 bool runTransitionMatrixTests();
 bool runTransitionSeekerTests();
+bool runTrigramPlotTests();
 
 int main() {
     int failedSuites = 0;
@@ -29,6 +30,10 @@ int main() {
     }
 
     if (!runTransitionSeekerTests()) {
+        ++failedSuites;
+    }
+
+    if (!runTrigramPlotTests()) {
         ++failedSuites;
     }
 

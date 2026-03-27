@@ -23,8 +23,9 @@
    - `TransitionMatrix` \u2013 256\u00d7256 byte-pair density computation and luminance
      rendering (Binary, Linear, Normalized modes).
    - `TransitionSeeker` \u2013 byte-pair offset scanner; returns matching file
-     positions for a selected (from, to) transition coordinate.
-   - No UI dependencies; independently testable.
+     positions for a selected (from, to) transition coordinate.   - `TrigramPlot` – 256³ byte-trigram density accumulator for the 3D
+     scatter plot.  Uses a thread-local 64 MB voxel buffer for efficient
+     recomputation during scrubbing.   - No UI dependencies; independently testable.
 
 2. `UI`
    - `Application` \u2013 Win32 + D3D11 host, ImGui context owner, three-column
@@ -60,6 +61,22 @@ the hex view, and moves the red cursor triangles.  Dragging the ribbon
 When enabled, the seeking crosshair automatically snaps to the nearest
 non-empty transition cell within a configurable Chebyshev radius.
 
+### 3D Trigram Scatter Plot
+When *3D Mode* is enabled, the centre column replaces the 2D transition
+matrix with an interactive 256³ byte-trigram scatter plot.  Each non-empty
+voxel is drawn as a small filled rectangle via ImDrawList orthographic
+projection with yaw/pitch rotation.
+
+- **Mouse-drag rotation**: Click-drag rotates the view (yaw around Y, pitch
+  around X).  Pitch is clamped to ±1.5 rad.
+- **Auto-rotation**: A checkbox enables continuous yaw advance at a
+  configurable speed (0.05“5.0 deg/frame) with an adjustable elevation
+  slider (−89° to 89°).  Manual drag is disabled during auto-rotation.
+- **Double-click reset**: Restores default yaw, pitch, and elevation.
+- **Heat-map / greyscale**: The same colour toggle applies to 3D points.
+- **Seeking disabled**: The 2D-only seeking controls are greyed out in 3D
+  mode.
+
 ## Build & Tooling
 
 - Visual Studio projects (`.vcxproj`) under `src`.
@@ -71,10 +88,12 @@ non-empty transition cell within a configurable Chebyshev radius.
 
 ## Test Strategy
 
-- `BinXray.Tests` runs four suites: `ByteFormatterTests`,
-  `BinaryDocumentTests`, `TransitionMatrixTests`, `TransitionSeekerTests`.
+- `BinXray.Tests` runs five suites: `ByteFormatterTests`,
+  `BinaryDocumentTests`, `TransitionMatrixTests`, `TransitionSeekerTests`,
+  `TrigramPlotTests`.
 - Edge cases covered: empty data, single byte, sub-ranges, boundary
-  clamping, maxResults capping, self-transitions, inverted ranges.
+  clamping, maxResults capping, self-transitions, inverted ranges,
+  repeated trigram accumulation, mapIntensity modes.
 - Process exit code reflects suite pass/fail for CI gating.
 
 ## Planned Evolution

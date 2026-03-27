@@ -69,8 +69,10 @@ std::uint8_t TrigramPlot::mapIntensity(std::uint32_t count,
     if (count == 0) return 0;
     if (!scale)     return 255;                         // Binary mode
     if (!normalize) return static_cast<std::uint8_t>(std::min(count, 255U)); // Linear clamp
-    // Normalized: 255 - floor(255/count)  (same as TransitionMatrix).
-    return static_cast<std::uint8_t>(255 - (255 / count));
+    // Normalized: scale count relative to the observed maximum.
+    if (maxCount == 0) return 0;
+    return static_cast<std::uint8_t>(
+        static_cast<std::uint64_t>(count) * 255 / maxCount);
 }
 
 } // namespace BinXray::Core
