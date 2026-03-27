@@ -13,6 +13,7 @@
 #include <algorithm>
 #include <chrono>
 #include <cmath>
+#include <cstdio>
 #include <commdlg.h>
 #include <d3d11.h>
 #include <dxgi.h>
@@ -73,7 +74,8 @@ Application::Application()
       m_loadingPath(),
       m_lastLoadError(),
       m_ribbonWidth(Constants::kRibbonWidthDefault),
-      m_hexViewPanel() {
+      m_hexViewPanel(),
+      m_seek() {
     m_matrixLuminance.fill(0);
 }
 
@@ -323,6 +325,7 @@ void Application::refreshRangeAfterDocumentChange() {
         m_windowStartOffset = 0;
         m_windowEndOffset = 0;
         m_matrixDirty = true;
+        invalidateSeek();
         return;
     }
 
@@ -335,6 +338,7 @@ void Application::refreshRangeAfterDocumentChange() {
     }
 
     m_matrixDirty = true;
+    invalidateSeek();
 }
 
 void Application::setWindowFromCenter(std::size_t centerOffset) {
@@ -390,6 +394,48 @@ void Application::rebuildMatrixIfDirty() {
         : (m_normalizeEnabled ? Core::TransitionMatrix::RenderMode::Normalized : Core::TransitionMatrix::RenderMode::Linear);
     m_transitionMatrix.renderLuminance(mode, m_matrixLuminance);
     m_matrixDirty = false;
+}
+
+void Application::invalidateSeek() {
+    if (!m_seek.frozen) {
+        m_seek.valid = false;
+        m_seek.result = {};
+    }
+}
+
+void Application::updateSeekFromPlot(float originX, float originY, float plotSize) {
+    if (!m_seek.seekEnabled || m_seek.frozen) {
+        return;
+    }
+
+    const ImVec2 mousePos = ImGui::GetMousePos();
+    const float localX = mousePos.x - originX;
+    const float localY = mousePos.y - originY;
+
+    if (localX < 0.0F || localX >= plotSize || localY < 0.0F || localY >= plotSize) {
+        m_seek.valid = false;
+        m_seek.result = {};
+        return;
+    }
+
+    constexpr float dim = static_cast<float>(Core::TransitionMatrix::kDimension);
+    const auto col = static_cast<std::uint8_t>(std::clamp(localX * dim / plotSize, 0.0F, 255.0F));
+    const auto row = static_cast<std::uint8_t>(std::clamp(localY * dim / plotSize, 0.0F, 255.0F));
+
+    // Avoid redundant re-scan when cursor stays on the same cell.
+    if (m_seek.valid && m_seek.fromByte == row && m_seek.toByte == col) {
+        return;
+    }
+
+    m_seek.fromByte = row;
+    m_seek.toByte = col;
+    m_seek.valid = true;
+    m_seek.result = Core::findTransitionOffsets(
+        m_document.bytes(),
+        m_transitionMatrix.startOffset(),
+        m_transitionMatrix.endOffset(),
+        row, col,
+        Constants::kSeekMaxAddresses);
 }
 
 bool Application::createDeviceD3D(HWND hWnd) {
@@ -507,6 +553,40 @@ void Application::drawControlsColumn() {
         m_ribbonWidth = std::clamp(m_ribbonWidth, Constants::kRibbonWidthMin, Constants::kRibbonWidthMax);
     }
 
+    ImGui::Separator();
+    ImGui::TextUnformatted("Seeking");
+    if (ImGui::Checkbox("Enable Seeking", &m_seek.seekEnabled)) {
+        if (!m_seek.seekEnabled) {
+            m_seek.frozen = false;
+            m_seek.valid = false;
+            m_seek.result = {};
+        }
+    }
+
+    ImGui::BeginDisabled(!m_seek.seekEnabled);
+    ImGui::Checkbox("Show Coordinates", &m_seek.coordEnabled);
+
+    if (m_seek.frozen) {
+        if (ImGui::Button("Unfreeze", ImVec2(-1.0F, 0.0F))) {
+            m_seek.frozen = false;
+        }
+    } else {
+        ImGui::BeginDisabled(!m_seek.valid);
+        if (ImGui::Button("Freeze", ImVec2(-1.0F, 0.0F))) {
+            m_seek.frozen = true;
+        }
+        ImGui::EndDisabled();
+    }
+    ImGui::EndDisabled();
+
+    if (m_seek.valid) {
+        ImGui::Text("Pair: 0x%02X -> 0x%02X", m_seek.fromByte, m_seek.toByte);
+        ImGui::Text("Count: %u", m_seek.result.transitionCount);
+        if (m_seek.result.offsets.size() < m_seek.result.transitionCount) {
+            ImGui::Text("(showing first %zu)", m_seek.result.offsets.size());
+        }
+    }
+
     if (controlsChanged) {
         refreshRangeAfterDocumentChange();
     }
@@ -547,6 +627,21 @@ void Application::drawMatrixPlot() {
     const ImVec2 origin = ImGui::GetCursorScreenPos();
     ImGui::InvisibleButton("TransitionPlotCanvas", ImVec2(plotSize, plotSize));
 
+    const bool isHovered = ImGui::IsItemHovered();
+
+    // Handle click-to-freeze / click-to-unfreeze toggle.
+    if (m_seek.seekEnabled && isHovered && ImGui::IsMouseClicked(ImGuiMouseButton_Left)) {
+        m_seek.frozen = !m_seek.frozen;
+    }
+
+    // Live-update seek when hovering and not frozen.
+    if (isHovered) {
+        updateSeekFromPlot(origin.x, origin.y, plotSize);
+    } else if (!m_seek.frozen) {
+        m_seek.valid = false;
+        m_seek.result = {};
+    }
+
     ImDrawList* drawList = ImGui::GetWindowDrawList();
     const float cellSize = plotSize / static_cast<float>(Core::TransitionMatrix::kDimension);
     for (std::size_t i = 0; i < Core::TransitionMatrix::kCellCount; ++i) {
@@ -563,6 +658,72 @@ void Application::drawMatrixPlot() {
     }
 
     drawList->AddRect(origin, ImVec2(origin.x + plotSize, origin.y + plotSize), Constants::kMatrixBorderColor, 0.0F, 0, 1.0F);
+
+    // Draw seeking crosshair and coordinate labels.
+    if (m_seek.seekEnabled && m_seek.valid && (m_seek.coordEnabled || m_seek.frozen)) {
+        const float crossX = origin.x + (static_cast<float>(m_seek.toByte) + 0.5F) * cellSize;
+        const float crossY = origin.y + (static_cast<float>(m_seek.fromByte) + 0.5F) * cellSize;
+
+        if (m_seek.coordEnabled) {
+            // Vertical line (column = toByte).
+            drawList->AddLine(ImVec2(crossX, origin.y), ImVec2(crossX, origin.y + plotSize),
+                              Constants::kSeekCrosshairColor, Constants::kSeekCrosshairThickness);
+            // Horizontal line (row = fromByte).
+            drawList->AddLine(ImVec2(origin.x, crossY), ImVec2(origin.x + plotSize, crossY),
+                              Constants::kSeekCrosshairColor, Constants::kSeekCrosshairThickness);
+
+            // Coordinate labels at the edges.
+            char rowLabel[8];
+            char colLabel[8];
+            std::snprintf(rowLabel, sizeof(rowLabel), "%02X", m_seek.fromByte);
+            std::snprintf(colLabel, sizeof(colLabel), "%02X", m_seek.toByte);
+
+            const ImVec2 rowLabelSize = ImGui::CalcTextSize(rowLabel);
+            const ImVec2 colLabelSize = ImGui::CalcTextSize(colLabel);
+            const float pad = 2.0F;
+
+            // Row label: left of the plot, vertically centered on crosshair.
+            const ImVec2 rowLabelPos(origin.x - rowLabelSize.x - pad, crossY - rowLabelSize.y * 0.5F);
+            drawList->AddRectFilled(ImVec2(rowLabelPos.x - pad, rowLabelPos.y - pad),
+                                    ImVec2(rowLabelPos.x + rowLabelSize.x + pad, rowLabelPos.y + rowLabelSize.y + pad),
+                                    Constants::kSeekCoordBgColor);
+            drawList->AddText(rowLabelPos, Constants::kSeekCoordTextColor, rowLabel);
+
+            // Column label: above the plot, horizontally centered on crosshair.
+            const ImVec2 colLabelPos(crossX - colLabelSize.x * 0.5F, origin.y - colLabelSize.y - pad);
+            drawList->AddRectFilled(ImVec2(colLabelPos.x - pad, colLabelPos.y - pad),
+                                    ImVec2(colLabelPos.x + colLabelSize.x + pad, colLabelPos.y + colLabelSize.y + pad),
+                                    Constants::kSeekCoordBgColor);
+            drawList->AddText(colLabelPos, Constants::kSeekCoordTextColor, colLabel);
+        }
+
+        // Highlight the specific cell.
+        const float cellX0 = origin.x + static_cast<float>(m_seek.toByte) * cellSize;
+        const float cellY0 = origin.y + static_cast<float>(m_seek.fromByte) * cellSize;
+        drawList->AddRect(ImVec2(cellX0, cellY0), ImVec2(cellX0 + cellSize, cellY0 + cellSize),
+                          Constants::kSeekHighlightBorder, 0.0F, 0, 2.0F);
+    }
+}
+
+void Application::drawSeekAddressList() {
+    if (!m_seek.seekEnabled || !m_seek.valid || m_seek.result.offsets.empty()) {
+        return;
+    }
+
+    ImGui::Separator();
+    ImGui::Text("Addresses for 0x%02X->0x%02X (%u total):",
+                m_seek.fromByte, m_seek.toByte, m_seek.result.transitionCount);
+
+    const float listHeight = std::min(120.0F, ImGui::GetContentRegionAvail().y * 0.4F);
+    ImGui::BeginChild("SeekAddressList", ImVec2(0.0F, listHeight), true);
+    for (const std::size_t offset : m_seek.result.offsets) {
+        char addrBuf[20];
+        std::snprintf(addrBuf, sizeof(addrBuf), "0x%08zX", offset);
+        if (ImGui::Selectable(addrBuf, offset == m_selectedOffset)) {
+            m_selectedOffset = offset;
+        }
+    }
+    ImGui::EndChild();
 }
 
 void Application::drawCenterColumn() {
@@ -573,17 +734,24 @@ void Application::drawCenterColumn() {
 
     ImGui::BeginChild("MatrixView", ImVec2(0.0F, plotHeight), true);
     drawMatrixPlot();
+    drawSeekAddressList();
     ImGui::EndChild();
 
     ImGui::Spacing();
     ImGui::BeginChild("HexView", ImVec2(0.0F, 0.0F), true);
     ImGui::TextUnformatted("Hex View");
     ImGui::Separator();
+
+    const std::vector<std::size_t>* seekOffsets =
+        (m_seek.seekEnabled && m_seek.valid && !m_seek.result.offsets.empty())
+            ? &m_seek.result.offsets : nullptr;
+
     m_hexViewPanel.drawEmbedded(
         m_document,
         m_selectedOffset,
         m_transitionMatrix.startOffset(),
-        m_transitionMatrix.endOffset());
+        m_transitionMatrix.endOffset(),
+        seekOffsets);
     ImGui::EndChild();
 }
 
@@ -655,6 +823,26 @@ void Application::drawRibbonColumn() {
         const std::size_t centerOffset = static_cast<std::size_t>(normalizedY * static_cast<float>(bytes.size() - 1));
         m_selectedOffset = centerOffset;
         setWindowFromCenter(centerOffset);
+    }
+
+    // Overlay seeking highlight on matching byte positions in the ribbon.
+    if (m_seek.seekEnabled && m_seek.valid && !m_seek.result.offsets.empty()) {
+        for (const std::size_t offset : m_seek.result.offsets) {
+            if (offset >= bytes.size()) {
+                continue;
+            }
+            const std::size_t seekRow = offset / ribbonWidth;
+            const std::size_t seekCol = offset % ribbonWidth;
+            if (seekRow < firstVisibleRow || seekRow >= lastVisibleRow) {
+                continue;
+            }
+            const float sx0 = contentOrigin.x + static_cast<float>(seekCol) * pixelScale;
+            const float sy0 = contentOrigin.y + static_cast<float>(seekRow) * pixelScale;
+            drawList->AddRectFilled(ImVec2(sx0, sy0), ImVec2(sx0 + pixelScale, sy0 + pixelScale),
+                                    Constants::kSeekHighlightFill);
+            drawList->AddRect(ImVec2(sx0, sy0), ImVec2(sx0 + pixelScale, sy0 + pixelScale),
+                              Constants::kSeekHighlightBorder, 0.0F, 0, 1.0F);
+        }
     }
 
     ImGui::EndChild();

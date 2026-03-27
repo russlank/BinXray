@@ -141,6 +141,7 @@
     <ClCompile Include="Core\BinaryDocument.cpp" />
     <ClCompile Include="Core\TransitionMatrix.cpp" />
     <ClCompile Include="Core\ByteFormatter.cpp" />
+    <ClCompile Include="Core\TransitionSeeker.cpp" />
     <ClCompile Include="UI\Application.cpp" />
     <ClCompile Include="UI\HexViewPanel.cpp" />
     <ClCompile Include="UI\InspectorPanel.cpp" />
@@ -156,6 +157,7 @@
     <ClInclude Include="Core\BinaryDocument.h" />
     <ClInclude Include="Core\TransitionMatrix.h" />
     <ClInclude Include="Core\ByteFormatter.h" />
+    <ClInclude Include="Core\TransitionSeeker.h" />
     <ClInclude Include="resource.h" />
     <ClInclude Include="UI\Application.h" />
     <ClInclude Include="UI\HexViewPanel.h" />

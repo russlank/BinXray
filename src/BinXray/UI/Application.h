@@ -16,13 +16,26 @@ struct ID3D11RenderTargetView;
 
 #include "Core/BinaryDocument.h"
 #include "Core/TransitionMatrix.h"
+#include "Core/TransitionSeeker.h"
 #include "UI/HexViewPanel.h"
 
 #include <future>
 #include <optional>
 #include <string>
+#include <vector>
 
 namespace BinXray::UI {
+
+/// Persistent seek state for the transition-plot crosshair / highlight feature.
+struct SeekState {
+    bool seekEnabled       = false;   ///< Master toggle for the seeking feature.
+    bool coordEnabled      = true;    ///< Show crosshair + coordinate labels.
+    bool frozen            = false;   ///< True while seek is click-locked.
+    bool valid             = false;   ///< True when fromByte/toByte hold meaningful data.
+    std::uint8_t fromByte  = 0;       ///< Row (previous byte value) under cursor.
+    std::uint8_t toByte    = 0;       ///< Column (current byte value) under cursor.
+    Core::SeekResult result;          ///< Resolved offsets + transition count.
+};
 
 class Application {
 public:
@@ -50,7 +63,11 @@ private:
     void drawControlsColumn();
     void drawCenterColumn();
     void drawMatrixPlot();
+    void drawSeekAddressList();
     void drawRibbonColumn();
+
+    void updateSeekFromPlot(float originX, float originY, float plotSize);
+    void invalidateSeek();
 
     bool createDeviceD3D(HWND hWnd);
     void cleanupDeviceD3D();
@@ -88,6 +105,7 @@ private:
 
     int m_ribbonWidth;
     HexViewPanel m_hexViewPanel;
+    SeekState m_seek;
 };
 
 } // namespace BinXray::UI

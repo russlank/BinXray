@@ -13,21 +13,32 @@ namespace BinXray::UI {
 
 void HexViewPanel::draw(const Core::BinaryDocument& document, std::size_t& selectedOffset) const {
     ImGui::Begin("Hex View");
-    drawContent(document, selectedOffset, 0, document.bytes().size());
+    drawContent(document, selectedOffset, 0, document.bytes().size(), nullptr);
     ImGui::End();
 }
 
 void HexViewPanel::drawEmbedded(const Core::BinaryDocument& document,
                                 std::size_t& selectedOffset,
                                 std::size_t rangeStartInclusive,
-                                std::size_t rangeEndExclusive) const {
-    drawContent(document, selectedOffset, rangeStartInclusive, rangeEndExclusive);
+                                std::size_t rangeEndExclusive,
+                                const std::vector<std::size_t>* seekHighlightOffsets) const {
+    drawContent(document, selectedOffset, rangeStartInclusive, rangeEndExclusive, seekHighlightOffsets);
+}
+
+bool HexViewPanel::isInHighlightSet(std::size_t offset,
+                                    const std::vector<std::size_t>* offsets) noexcept {
+    if (!offsets || offsets->empty()) {
+        return false;
+    }
+    // The offsets vector from TransitionSeeker is in ascending order (scan order).
+    return std::binary_search(offsets->begin(), offsets->end(), offset);
 }
 
 void HexViewPanel::drawContent(const Core::BinaryDocument& document,
                                std::size_t& selectedOffset,
                                std::size_t rangeStartInclusive,
-                               std::size_t rangeEndExclusive) const {
+                               std::size_t rangeEndExclusive,
+                               const std::vector<std::size_t>* seekHighlightOffsets) const {
     const auto& bytes = document.bytes();
     if (bytes.empty()) {
         ImGui::TextUnformatted("No binary data loaded.");
@@ -62,6 +73,7 @@ void HexViewPanel::drawContent(const Core::BinaryDocument& document,
         for (std::size_t column = 0; column < bytesPerRow && (relativeOffset + column) < maxVisibleBytes; ++column) {
             const std::size_t  index      = absoluteOffset + column;
             const bool         isSelected = (index == selectedOffset);
+            const bool         isSeekHit  = isInHighlightSet(index, seekHighlightOffsets);
             const std::uint8_t byteVal    = bytes[index];
 
             asciiBuf[asciiLen++] = (byteVal >= 0x20 && byteVal <= 0x7E) ? static_cast<char>(byteVal) : '.';
@@ -72,6 +84,9 @@ void HexViewPanel::drawContent(const Core::BinaryDocument& document,
             if (isSelected) {
                 ImGui::PushStyleColor(ImGuiCol_Button,        Constants::kHexSelectedColor);
                 ImGui::PushStyleColor(ImGuiCol_ButtonHovered, Constants::kHexSelectedHoveredColor);
+            } else if (isSeekHit) {
+                ImGui::PushStyleColor(ImGuiCol_Button,        Constants::kHexSeekHighlightColor);
+                ImGui::PushStyleColor(ImGuiCol_ButtonHovered, Constants::kHexSeekHighlightHovered);
             }
 
             ImGui::PushID(static_cast<int>(index));
@@ -81,6 +96,8 @@ void HexViewPanel::drawContent(const Core::BinaryDocument& document,
             ImGui::PopID();
 
             if (isSelected) {
+                ImGui::PopStyleColor(2);
+            } else if (isSeekHit) {
                 ImGui::PopStyleColor(2);
             }
 

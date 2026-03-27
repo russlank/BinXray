@@ -19,11 +19,14 @@
 
 1. `Core`
    - Binary data model and formatting helpers.
+   - Transition matrix computation and luminance rendering.
+   - Transition seeker (byte-pair offset scanner for seeking).
    - No UI dependencies.
 
 2. `UI`
    - Win32 + D3D11 host (`Application`).
    - ImGui panel composition (`HexViewPanel`, `InspectorPanel`, `StatusBar`).
+   - `SeekState` struct for crosshair/highlight interaction state.
 
 3. `Entry`
    - `main.cpp` starts application lifecycle.

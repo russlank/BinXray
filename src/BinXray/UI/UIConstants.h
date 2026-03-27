@@ -59,4 +59,16 @@ constexpr int    kBlockSizeMin     =     2;
 constexpr int    kBlockSizeStep    =   256;
 constexpr int    kBlockSizeFastStep =  2048;
 
+// ── Seeking overlay ───────────────────────────────────────────────────────────
+constexpr ImU32  kSeekCrosshairColor       = IM_COL32(255, 200,  50, 200);
+constexpr ImU32  kSeekCoordTextColor       = IM_COL32(255, 220, 100, 255);
+constexpr ImU32  kSeekCoordBgColor         = IM_COL32( 30,  30,  30, 200);
+constexpr ImU32  kSeekHighlightFill        = IM_COL32(255, 180,  40,  45);
+constexpr ImU32  kSeekHighlightBorder      = IM_COL32(255, 180,  40, 200);
+constexpr ImU32  kHexSeekHighlightColor    = IM_COL32(200, 160,  40, 255);
+constexpr ImU32  kHexSeekHighlightHovered  = IM_COL32(220, 180,  60, 255);
+constexpr float  kSeekCrosshairThickness   = 1.0F;
+constexpr float  kSeekCoordFontScale       = 0.85F;
+constexpr std::size_t kSeekMaxAddresses    = 256;
+
 } // namespace BinXray::UI::Constants
