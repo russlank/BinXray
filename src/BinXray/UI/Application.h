@@ -113,6 +113,7 @@ private:
 
     bool m_scaleEnabled;
     bool m_normalizeEnabled;
+    bool m_heatMapEnabled;
     bool m_fullViewEnabled;
     int m_blockSize;
     std::size_t m_windowStartOffset;

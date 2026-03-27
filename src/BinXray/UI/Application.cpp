@@ -30,6 +30,35 @@ namespace BinXray::UI {
 namespace {
 Application* g_applicationInstance = nullptr;
 constexpr wchar_t kWindowClass[] = L"BinXrayWindowClass";
+
+/// Maps a 0–255 intensity to a blue→cyan→green→yellow→red heat-map colour.
+ImU32 intensityToHeatMap(std::uint8_t intensity) {
+    const float t = static_cast<float>(intensity) / 255.0F;
+    float r, g, b;
+    if (t < 0.25F) {
+        r = 0.0F;
+        g = t * 4.0F;
+        b = 1.0F;
+    } else if (t < 0.5F) {
+        r = 0.0F;
+        g = 1.0F;
+        b = 1.0F - (t - 0.25F) * 4.0F;
+    } else if (t < 0.75F) {
+        r = (t - 0.5F) * 4.0F;
+        g = 1.0F;
+        b = 0.0F;
+    } else {
+        r = 1.0F;
+        g = 1.0F - (t - 0.75F) * 4.0F;
+        b = 0.0F;
+    }
+    return IM_COL32(
+        static_cast<int>(r * 255.0F),
+        static_cast<int>(g * 255.0F),
+        static_cast<int>(b * 255.0F),
+        255);
+}
+
 }
 
 static std::wstring utf8ToWide(const char* text) {
@@ -69,6 +98,7 @@ Application::Application()
       m_matrixLuminance(),
       m_scaleEnabled(false),
       m_normalizeEnabled(false),
+      m_heatMapEnabled(false),
       m_fullViewEnabled(true),
       m_blockSize(Constants::kBlockSizeDefault),
       m_windowStartOffset(0),
@@ -596,6 +626,8 @@ void Application::drawControlsColumn() {
     controlsChanged = ImGui::Checkbox("Normalize", &m_normalizeEnabled) || controlsChanged;
     ImGui::EndDisabled();
 
+    ImGui::Checkbox("Heat Map", &m_heatMapEnabled);
+
     controlsChanged = ImGui::Checkbox("Full View", &m_fullViewEnabled) || controlsChanged;
     if (ImGui::InputInt("Block Size", &m_blockSize, Constants::kBlockSizeStep, Constants::kBlockSizeFastStep)) {
         m_blockSize = std::max(Constants::kBlockSizeMin, m_blockSize);
@@ -608,7 +640,7 @@ void Application::drawControlsColumn() {
     }
 
     ImGui::Separator();
-    ImGui::TextUnformatted("Seeking");
+    ImGui::TextColored(Constants::kControlsLabelColor, "Seeking");
     if (ImGui::Checkbox("Enable Seeking", &m_seek.seekEnabled)) {
         if (!m_seek.seekEnabled) {
             m_seek.frozen = false;
@@ -635,8 +667,12 @@ void Application::drawControlsColumn() {
     ImGui::EndDisabled();
 
     if (m_seek.valid) {
-        ImGui::Text("Pair: 0x%02X -> 0x%02X", m_seek.fromByte, m_seek.toByte);
-        ImGui::Text("Count: %u", m_seek.result.transitionCount);
+        ImGui::TextColored(Constants::kControlsLabelColor, "Pair:");
+        ImGui::SameLine();
+        ImGui::Text("0x%02X -> 0x%02X", m_seek.fromByte, m_seek.toByte);
+        ImGui::TextColored(Constants::kControlsLabelColor, "Count:");
+        ImGui::SameLine();
+        ImGui::Text("%u", m_seek.result.transitionCount);
         if (m_seek.result.offsets.size() < m_seek.result.transitionCount) {
             ImGui::Text("(showing first %zu)", m_seek.result.offsets.size());
         }
@@ -648,22 +684,36 @@ void Application::drawControlsColumn() {
 
     const auto& bytes = m_document.bytes();
     ImGui::Separator();
-    ImGui::Text("Bytes: %zu", bytes.size());
+    ImGui::TextColored(Constants::kControlsLabelColor, "Bytes:");
+    ImGui::SameLine();
+    ImGui::Text("%zu", bytes.size());
     if (!m_document.sourcePath().empty()) {
-        ImGui::TextWrapped("File: %ls", m_document.sourcePath().c_str());
+        ImGui::TextColored(Constants::kControlsLabelColor, "File:");
+        ImGui::SameLine();
+        ImGui::TextWrapped("%ls", m_document.sourcePath().c_str());
     } else {
-        ImGui::TextUnformatted("File: sample dataset");
+        ImGui::TextColored(Constants::kControlsLabelColor, "File:");
+        ImGui::SameLine();
+        ImGui::TextUnformatted("sample dataset");
     }
 
-    ImGui::Text("Range: 0x%zX - 0x%zX", m_transitionMatrix.startOffset(), m_transitionMatrix.endOffset());
-    ImGui::Text("Max Density: %u", m_transitionMatrix.maxCount());
+    ImGui::TextColored(Constants::kControlsLabelColor, "Range:");
+    ImGui::SameLine();
+    ImGui::Text("0x%zX - 0x%zX", m_transitionMatrix.startOffset(), m_transitionMatrix.endOffset());
+    ImGui::TextColored(Constants::kControlsLabelColor, "Max Density:");
+    ImGui::SameLine();
+    ImGui::Text("%u", m_transitionMatrix.maxCount());
 
     if (!bytes.empty()) {
         m_selectedOffset = std::min(m_selectedOffset, bytes.size() - 1);
         const std::uint8_t value = bytes[m_selectedOffset];
         ImGui::Separator();
-        ImGui::Text("Selected Offset: 0x%zX", m_selectedOffset);
-        ImGui::Text("Selected Byte: %u", static_cast<unsigned int>(value));
+        ImGui::TextColored(Constants::kControlsLabelColor, "Selected Offset:");
+        ImGui::SameLine();
+        ImGui::Text("0x%zX", m_selectedOffset);
+        ImGui::TextColored(Constants::kControlsLabelColor, "Selected Byte:");
+        ImGui::SameLine();
+        ImGui::Text("%u", static_cast<unsigned int>(value));
     }
 }
 
@@ -678,9 +728,15 @@ void Application::drawMatrixPlot() {
     ImGui::Separator();
 
     const ImVec2 available = ImGui::GetContentRegionAvail();
-    const float plotSize = std::max(Constants::kMatrixPlotMinSize, std::min(available.x, available.y));
-    const ImVec2 origin = ImGui::GetCursorScreenPos();
-    ImGui::InvisibleButton("TransitionPlotCanvas", ImVec2(plotSize, plotSize));
+    const float marginLeft = Constants::kMatrixPlotMarginLeft;
+    const float marginTop  = Constants::kMatrixPlotMarginTop;
+    const float plotSize = std::max(Constants::kMatrixPlotMinSize,
+        std::min(available.x - marginLeft, available.y - marginTop));
+    const ImVec2 canvasOrigin = ImGui::GetCursorScreenPos();
+    ImGui::InvisibleButton("TransitionPlotCanvas", ImVec2(plotSize + marginLeft, plotSize + marginTop));
+
+    // Plot area starts after the margins (space reserved for coordinate labels).
+    const ImVec2 origin(canvasOrigin.x + marginLeft, canvasOrigin.y + marginTop);
 
     const bool isHovered = ImGui::IsItemHovered();
 
@@ -706,7 +762,9 @@ void Application::drawMatrixPlot() {
         }
         const std::size_t row    = i / Core::TransitionMatrix::kDimension;
         const std::size_t column = i % Core::TransitionMatrix::kDimension;
-        const ImU32  color = IM_COL32(intensity, intensity, intensity, 255);
+        const ImU32  color = m_heatMapEnabled
+            ? intensityToHeatMap(intensity)
+            : IM_COL32(intensity, intensity, intensity, 255);
         const float  x0    = origin.x + static_cast<float>(column) * cellSize;
         const float  y0    = origin.y + static_cast<float>(row)    * cellSize;
         drawList->AddRectFilled(ImVec2(x0, y0), ImVec2(x0 + cellSize, y0 + cellSize), color);
@@ -851,8 +909,22 @@ void Application::drawRibbonColumn() {
     const std::size_t ribbonWidth = static_cast<std::size_t>(m_ribbonWidth);
     const std::size_t rowCount = (bytes.size() + ribbonWidth - 1) / ribbonWidth;
     const float widthAvailable = ImGui::GetContentRegionAvail().x;
-    const float pixelScale   = std::max(1.0F, std::floor((widthAvailable - Constants::kRibbonScrollMargin) / static_cast<float>(ribbonWidth)));
-    const float contentWidth = static_cast<float>(ribbonWidth) * pixelScale;
+
+    // Reserve margins for cursor triangles and coordinate labels.
+    const float leftMargin  = Constants::kRibbonLeftMargin;
+    const float rightMargin = Constants::kRibbonRightMargin;
+    const float pixelSpace  = widthAvailable - leftMargin - rightMargin;
+
+    // Scale pixels to fit available space; use integer scaling when room allows,
+    // fractional scaling when the ribbon width exceeds the panel width.
+    float pixelScale = pixelSpace / static_cast<float>(ribbonWidth);
+    if (pixelScale >= 2.0F) {
+        pixelScale = std::floor(pixelScale);
+    }
+    pixelScale = std::max(0.5F, pixelScale);
+
+    const float contentWidth  = static_cast<float>(ribbonWidth) * pixelScale;
+    const float totalWidth    = leftMargin + contentWidth + rightMargin;
     const float contentHeight = std::max(1.0F, static_cast<float>(rowCount) * pixelScale);
 
     ImGui::TextUnformatted("Bitmap Ribbon");
@@ -861,7 +933,10 @@ void Application::drawRibbonColumn() {
 
     ImGui::BeginChild("RibbonScroll", ImVec2(0.0F, 0.0F), true, ImGuiWindowFlags_HorizontalScrollbar);
     const ImVec2 contentOrigin = ImGui::GetCursorScreenPos();
-    ImGui::InvisibleButton("RibbonCanvas", ImVec2(contentWidth, contentHeight));
+    ImGui::InvisibleButton("RibbonCanvas", ImVec2(totalWidth, contentHeight));
+
+    // Pixel area starts after the left margin.
+    const float pixelOriginX = contentOrigin.x + leftMargin;
 
     const float scrollY = ImGui::GetScrollY();
     const float viewHeight = ImGui::GetWindowHeight();
@@ -880,7 +955,7 @@ void Application::drawRibbonColumn() {
             const std::size_t byteIndex = rowStart + column;
             const std::uint8_t value = byteIndex < bytes.size() ? bytes[byteIndex] : 0;
             const ImU32 color = IM_COL32(Constants::kRibbonByteColorR, value, Constants::kRibbonByteColorB, 255);
-            const float x0 = contentOrigin.x + static_cast<float>(column) * pixelScale;
+            const float x0 = pixelOriginX + static_cast<float>(column) * pixelScale;
             drawList->AddRectFilled(ImVec2(x0, y0), ImVec2(x0 + pixelScale, y1), color);
         }
     }
@@ -891,12 +966,12 @@ void Application::drawRibbonColumn() {
         const float markerY0 = contentOrigin.y + static_cast<float>(startRow) * pixelScale;
         const float markerY1 = contentOrigin.y + static_cast<float>(endRow + 1) * pixelScale;
         drawList->AddRectFilled(
-            ImVec2(contentOrigin.x, markerY0),
-            ImVec2(contentOrigin.x + contentWidth, markerY1),
+            ImVec2(pixelOriginX, markerY0),
+            ImVec2(pixelOriginX + contentWidth, markerY1),
             Constants::kRibbonHighlightFill);
         drawList->AddRect(
-            ImVec2(contentOrigin.x, markerY0),
-            ImVec2(contentOrigin.x + contentWidth, markerY1),
+            ImVec2(pixelOriginX, markerY0),
+            ImVec2(pixelOriginX + contentWidth, markerY1),
             Constants::kRibbonHighlightBorder,
             0.0F,
             0,
@@ -905,7 +980,7 @@ void Application::drawRibbonColumn() {
 
     // Handle click on ribbon to select byte offset and scroll hex view.
     if (ImGui::IsItemHovered() && ImGui::IsMouseClicked(ImGuiMouseButton_Left)) {
-        const float localX = std::clamp(ImGui::GetMousePos().x - contentOrigin.x, 0.0F, contentWidth - 1.0F);
+        const float localX = std::clamp(ImGui::GetMousePos().x - pixelOriginX, 0.0F, contentWidth - 1.0F);
         const float localY = std::clamp(ImGui::GetMousePos().y - contentOrigin.y, 0.0F, contentHeight - 1.0F);
         const auto clickCol = static_cast<std::size_t>(localX / pixelScale);
         const auto clickRow = static_cast<std::size_t>(localY / pixelScale);
@@ -935,7 +1010,7 @@ void Application::drawRibbonColumn() {
             if (seekRow < firstVisibleRow || seekRow >= lastVisibleRow) {
                 continue;
             }
-            const float sx0 = contentOrigin.x + static_cast<float>(seekCol) * pixelScale;
+            const float sx0 = pixelOriginX + static_cast<float>(seekCol) * pixelScale;
             const float sy0 = contentOrigin.y + static_cast<float>(seekRow) * pixelScale;
             drawList->AddRectFilled(ImVec2(sx0, sy0), ImVec2(sx0 + pixelScale, sy0 + pixelScale),
                                     Constants::kSeekHighlightFill);
@@ -948,33 +1023,33 @@ void Application::drawRibbonColumn() {
     if (m_selectedOffset < bytes.size()) {
         const std::size_t curRow = m_selectedOffset / ribbonWidth;
         const std::size_t curCol = m_selectedOffset % ribbonWidth;
-        const float cellCenterX = contentOrigin.x + (static_cast<float>(curCol) + 0.5F) * pixelScale;
+        const float cellCenterX = pixelOriginX + (static_cast<float>(curCol) + 0.5F) * pixelScale;
         const float cellCenterY = contentOrigin.y + (static_cast<float>(curRow) + 0.5F) * pixelScale;
         const float triSz = Constants::kRibbonCursorTriSize;
         const ImU32 triCol = Constants::kRibbonCursorColor;
 
-        // Left-edge triangle pointing right → row indicator.
-        const float leftX = contentOrigin.x;
+        // Left-edge triangle in the left margin, pointing right toward pixels.
+        const float leftTriTipX = pixelOriginX;
         drawList->AddTriangleFilled(
-            ImVec2(leftX,            cellCenterY - triSz),
-            ImVec2(leftX,            cellCenterY + triSz),
-            ImVec2(leftX + triSz,    cellCenterY),
+            ImVec2(leftTriTipX - triSz, cellCenterY - triSz),
+            ImVec2(leftTriTipX - triSz, cellCenterY + triSz),
+            ImVec2(leftTriTipX,         cellCenterY),
             triCol);
 
-        // Right-edge triangle pointing left → row indicator (mirror).
-        const float rightX = contentOrigin.x + contentWidth;
+        // Right-edge triangle in the right margin, pointing left toward pixels.
+        const float rightTriTipX = pixelOriginX + contentWidth;
         drawList->AddTriangleFilled(
-            ImVec2(rightX,           cellCenterY - triSz),
-            ImVec2(rightX,           cellCenterY + triSz),
-            ImVec2(rightX - triSz,   cellCenterY),
+            ImVec2(rightTriTipX + triSz, cellCenterY - triSz),
+            ImVec2(rightTriTipX + triSz, cellCenterY + triSz),
+            ImVec2(rightTriTipX,         cellCenterY),
             triCol);
 
-        // Coordinate label between the triangles (right side).
+        // Coordinate label in the right margin, after the triangle.
         char curLabel[24];
         std::snprintf(curLabel, sizeof(curLabel), "%zu:%zu", curRow, curCol);
         const ImVec2 labelSize = ImGui::CalcTextSize(curLabel);
         const float pad = 2.0F;
-        const float labelX = rightX + pad;
+        const float labelX = rightTriTipX + triSz + pad;
         const float labelY = cellCenterY - labelSize.y * 0.5F;
         drawList->AddRectFilled(
             ImVec2(labelX - pad, labelY - pad),

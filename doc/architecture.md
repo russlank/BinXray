@@ -47,7 +47,10 @@ Hovering the 256\u00d7256 matrix shows a crosshair and locates all file offsets
 with that byte-pair transition.  Results appear in a scrollable address
 list beside the hex view.  Clicking an address scrolls the hex view to
 that position and updates the bitmap ribbon cursor.
-
+### Heat-Map Colour Mode
+The transition plot can render in greyscale (default) or a heat-map
+gradient (blue→cyan→green→yellow→red).  Coordinate margins ensure
+labels never overlap the plot area.
 ### Bitmap Ribbon Navigation
 Clicking a pixel in the bitmap ribbon selects that byte offset, scrolls
 the hex view, and moves the red cursor triangles.  Dragging the ribbon
