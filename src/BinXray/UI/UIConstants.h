@@ -96,4 +96,20 @@ constexpr std::size_t kSeekMaxAddresses    = 256;
 constexpr float  kSeekAddressPanelWidth    = 130.0F;  ///< Width of the address list beside the hex view.
 constexpr int    kSeekSnapMaxRadius        = 24;       ///< Chebyshev radius for snap-to-data search.
 
+// ── Controls labels ───────────────────────────────────────────────────────────
+/// Warm-tint colour for section headers and field labels in the controls panel,
+/// visually separating them from data values which use the default text colour.
+constexpr ImVec4 kControlsLabelColor = {1.0F, 0.94F, 0.70F, 1.0F};
+
+// ── Matrix plot margins ───────────────────────────────────────────────────────
+/// Space reserved around the transition plot for coordinate labels.
+constexpr float kMatrixPlotMarginLeft = 28.0F;
+constexpr float kMatrixPlotMarginTop  = 20.0F;
+
+// ── Ribbon margins ────────────────────────────────────────────────────────────
+/// Space reserved on left/right of the pixel area for cursor triangles and
+/// coordinate labels, ensuring they do not overlap rendered pixels.
+constexpr float kRibbonLeftMargin  = 10.0F;
+constexpr float kRibbonRightMargin = 70.0F;
+
 } // namespace BinXray::UI::Constants

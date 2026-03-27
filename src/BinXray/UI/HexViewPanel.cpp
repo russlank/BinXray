@@ -131,7 +131,29 @@ void HexViewPanel::drawContent(const Core::BinaryDocument& document,
 
             asciiBuf[asciiLen] = '\0';
             ImGui::SameLine();
-            ImGui::TextUnformatted(asciiBuf);
+
+            // Render ASCII column with per-character colouring to match
+            // the hex byte highlight state (selected → blue, seek-hit → gold).
+            for (std::size_t ai = 0; ai < asciiLen; ++ai) {
+                const std::size_t aiOffset   = absoluteOffset + ai;
+                const bool        aiSelected = (aiOffset == selectedOffset);
+                const bool        aiSeekHit  = isInHighlightSet(aiOffset, seekHighlightOffsets);
+                const char ch[2] = {asciiBuf[ai], '\0'};
+                if (aiSelected) {
+                    ImGui::TextColored(
+                        ImGui::ColorConvertU32ToFloat4(Constants::kHexSelectedColor),
+                        "%s", ch);
+                } else if (aiSeekHit) {
+                    ImGui::TextColored(
+                        ImGui::ColorConvertU32ToFloat4(Constants::kHexSeekHighlightColor),
+                        "%s", ch);
+                } else {
+                    ImGui::TextUnformatted(ch, ch + 1);
+                }
+                if (ai + 1 < asciiLen) {
+                    ImGui::SameLine(0.0F, 0.0F);
+                }
+            }
         }
     }
 
