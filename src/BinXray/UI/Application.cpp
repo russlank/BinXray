@@ -936,29 +936,27 @@ void Application::draw3DPlot() {
     const float halfPlot = plotSize * 0.5F;
     const float cx = canvasOrigin.x + halfPlot;
     const float cy = canvasOrigin.y + halfPlot;
-    // Fold the [-127.5, +127.5] centering and 1/127.5 normalisation into the
-    // projection scale so the hot loop only needs multiply-add per coordinate.
+    // Fold the 1/127.5 normalisation into the projection scale so the hot
+    // loop only needs a subtract + multiply per coordinate.
     const float rawScale = plotSize * 0.35F;
     const float invNorm  = rawScale / 127.5F;
-    const float offsetCx = cx - rawScale;   // cx - 127.5 * invNorm
-    const float offsetCy = cy - rawScale;
 
     // Lambda: project a [0,255] (x,y,z) coordinate to screen (px, py).
     // Uses precomputed invNorm so the inner loop avoids 3 subtractions
     // and 3 divisions per point.
     auto project = [&](float x, float y, float z, float& px, float& py) {
-        // Scale directly: val * invNorm maps [0,255] → [-scale, +scale].
-        const float sx = x * invNorm;
-        const float sy = y * invNorm;
-        const float sz = z * invNorm;
+        // Centre to [-scale, +scale]: (val - 127.5) * invNorm.
+        const float sx = (x - 127.5F) * invNorm;
+        const float sy = (y - 127.5F) * invNorm;
+        const float sz = (z - 127.5F) * invNorm;
         // Apply yaw (around Y axis).
         const float rx =  cosYaw * sx + sinYaw * sz;
         const float rz = -sinYaw * sx + cosYaw * sz;
         // Apply pitch (around X axis).
         const float ry = cosPitch * sy - sinPitch * rz;
         // Orthographic projection (drop Z after rotation).
-        px = offsetCx + rx;
-        py = offsetCy + ry;
+        px = cx + rx;
+        py = cy + ry;
     };
 
     ImDrawList* drawList = ImGui::GetWindowDrawList();
