@@ -83,7 +83,7 @@ bool Application::initialize(HINSTANCE hInstance) {
 
     m_hWnd = ::CreateWindowW(
         wc.lpszClassName,
-        L"BinXray",
+        L"Bin X-ray",
         WS_OVERLAPPEDWINDOW,
         Constants::kWindowInitialX,
         Constants::kWindowInitialY,

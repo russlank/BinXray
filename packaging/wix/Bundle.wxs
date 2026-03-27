@@ -1,10 +1,18 @@
-<?xml version="1.0" encoding="UTF-8"?>
-<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">
-  <!-- Phase-1 placeholder for BinXray bootstrapper authoring. -->
-  <Bundle Name="BinXray Setup" Version="0.1.0.0" Manufacturer="Digixoil" UpgradeCode="73D8B10D-8D11-4D1A-B5F2-3BC2694862B6">
-    <BootstrapperApplicationRef Id="WixStandardBootstrapperApplication.HyperlinkLicense" />
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs"
+     xmlns:bal="http://wixtoolset.org/schemas/v4/wxs/bal">
+  <Bundle Name="BinXray Setup"
+          Manufacturer="Russlan Kafri"
+          Version="$(var.ProductVersion)"
+          UpgradeCode="{73D8B10D-8D11-4D1A-B5F2-3BC2694862B6}"
+          IconSourceFile="$(var.AppIconPath)">
+    <BootstrapperApplication>
+      <bal:WixStandardBootstrapperApplication Theme="none" />
+    </BootstrapperApplication>
+
     <Chain>
-      <!-- TODO: Add MSI package here in phase 2. -->
+      <MsiPackage SourceFile="$(var.MsiPath)"
+                  Visible="yes"
+                  Permanent="no" />
     </Chain>
   </Bundle>
 </Wix>

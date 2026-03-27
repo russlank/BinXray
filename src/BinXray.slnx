@@ -3,6 +3,9 @@
     <Platform Name="x64" />
     <Platform Name="x86" />
   </Configurations>
+  <Folder Name="/ci/">
+    <File Path="../.github/workflows/release-packaging.yml" />
+  </Folder>
   <Folder Name="/doc/">
     <File Path="../doc/architecture.md" />
     <File Path="../doc/index.md" />

@@ -1,7 +1,51 @@
-<?xml version="1.0" encoding="UTF-8"?>
 <Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">
-  <!-- Phase-1 placeholder for BinXray MSI authoring. -->
-  <Package Name="BinXray" Manufacturer="Digixoil" Version="0.1.0.0" UpgradeCode="4EC6E6EE-EC80-4CBE-B8EA-A67524480EAA">
-    <SummaryInformation Description="BinXray installer placeholder." />
+  <Package Name="BinXray"
+           Manufacturer="Russlan Kafri"
+           Version="$(var.ProductVersion)"
+           UpgradeCode="{4EC6E6EE-EC80-4CBE-B8EA-A67524480EAA}"
+           InstallerVersion="500"
+           Scope="perMachine"
+           Language="1033">
+    <MajorUpgrade DowngradeErrorMessage="A newer version of BinXray is already installed." />
+    <MediaTemplate EmbedCab="yes" />
+
+    <Icon Id="AppIcon" SourceFile="$(var.AppIconPath)" />
+    <Property Id="ARPPRODUCTICON" Value="AppIcon" />
+
+    <StandardDirectory Id="ProgramFiles64Folder">
+      <Directory Id="INSTALLFOLDER" Name="BinXray">
+        <Component Id="MainExecutableComponent" Guid="*">
+          <File Id="MainExecutableFile"
+                Source="$(var.AppExePath)"
+                Name="BinXray.exe"
+                KeyPath="yes" />
+        </Component>
+      </Directory>
+    </StandardDirectory>
+
+    <StandardDirectory Id="ProgramMenuFolder">
+      <Directory Id="StartMenuFolder" Name="BinXray">
+        <Component Id="StartMenuComponent" Guid="*">
+          <Shortcut Id="StartMenuShortcut"
+                    Name="BinXray"
+                    Description="BinXray Binary Analyzer"
+                    Target="[INSTALLFOLDER]BinXray.exe"
+                    WorkingDirectory="INSTALLFOLDER"
+                    Icon="AppIcon" />
+          <RemoveFolder Id="RemoveStartMenuFolder" On="uninstall" />
+          <RegistryValue Root="HKCU"
+                         Key="Software\Digixoil\BinXray"
+                         Name="Installed"
+                         Type="integer"
+                         Value="1"
+                         KeyPath="yes" />
+        </Component>
+      </Directory>
+    </StandardDirectory>
+
+    <Feature Id="MainFeature" Title="BinXray" Level="1">
+      <ComponentRef Id="MainExecutableComponent" />
+      <ComponentRef Id="StartMenuComponent" />
+    </Feature>
   </Package>
 </Wix>

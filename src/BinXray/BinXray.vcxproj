@@ -134,6 +134,9 @@
     <ResourceCompile Include="app.rc" />
   </ItemGroup>
   <ItemGroup>
+    <Image Include="Resources\BinXray.ico" />
+  </ItemGroup>
+  <ItemGroup>
     <ClCompile Include="main.cpp" />
     <ClCompile Include="Core\BinaryDocument.cpp" />
     <ClCompile Include="Core\TransitionMatrix.cpp" />
