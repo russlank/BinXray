@@ -59,6 +59,20 @@ ImU32 intensityToHeatMap(std::uint8_t intensity) {
         255);
 }
 
+/// Pre-built 256-entry LUT mapping intensity → heat-map ImU32.
+/// Avoids repeated per-pixel branching in hot rendering loops.
+const ImU32* getHeatMapLUT() {
+    static ImU32 lut[256];
+    static bool built = false;
+    if (!built) {
+        for (int i = 0; i < 256; ++i) {
+            lut[i] = intensityToHeatMap(static_cast<std::uint8_t>(i));
+        }
+        built = true;
+    }
+    return lut;
+}
+
 }
 
 static std::wstring utf8ToWide(const char* text) {
@@ -150,7 +164,7 @@ bool Application::initialize(HINSTANCE hInstance) {
         hInstance, MAKEINTRESOURCEW(IDI_APPICON), IMAGE_ICON, 16, 16, LR_DEFAULTCOLOR));
     ::RegisterClassExW(&wc);
 
-    std::wstring windowTitle = L"BinXray v";
+    std::wstring windowTitle = L"Bin X-ray v";
     windowTitle += BXR_VERSION_WSTRING;
 
     std::wstring branchWide = utf8ToWide(BXR_BUILD_BRANCH);
@@ -806,15 +820,16 @@ void Application::drawMatrixPlot() {
 
     ImDrawList* drawList = ImGui::GetWindowDrawList();
     const float cellSize = plotSize / static_cast<float>(Core::TransitionMatrix::kDimension);
+    const ImU32* heatLUT = m_heatMapEnabled ? getHeatMapLUT() : nullptr;
     for (std::size_t i = 0; i < Core::TransitionMatrix::kCellCount; ++i) {
         const std::uint8_t intensity = m_matrixLuminance[i];
         if (intensity == 0) {
             continue;
         }
-        const std::size_t row    = i / Core::TransitionMatrix::kDimension;
-        const std::size_t column = i % Core::TransitionMatrix::kDimension;
-        const ImU32  color = m_heatMapEnabled
-            ? intensityToHeatMap(intensity)
+        const std::size_t row    = i >> 8;  // i / 256  (kDimension is always 256)
+        const std::size_t column = i & 0xFF; // i % 256
+        const ImU32  color = heatLUT
+            ? heatLUT[intensity]
             : IM_COL32(intensity, intensity, intensity, 255);
         const float  x0    = origin.x + static_cast<float>(column) * cellSize;
         const float  y0    = origin.y + static_cast<float>(row)    * cellSize;
@@ -921,25 +936,29 @@ void Application::draw3DPlot() {
     const float halfPlot = plotSize * 0.5F;
     const float cx = canvasOrigin.x + halfPlot;
     const float cy = canvasOrigin.y + halfPlot;
-    // Projection scale so 256-unit cube fits inside the plot.
-    const float scale = plotSize * 0.35F;
+    // Fold the [-127.5, +127.5] centering and 1/127.5 normalisation into the
+    // projection scale so the hot loop only needs multiply-add per coordinate.
+    const float rawScale = plotSize * 0.35F;
+    const float invNorm  = rawScale / 127.5F;
+    const float offsetCx = cx - rawScale;   // cx - 127.5 * invNorm
+    const float offsetCy = cy - rawScale;
 
     // Lambda: project a [0,255] (x,y,z) coordinate to screen (px, py).
+    // Uses precomputed invNorm so the inner loop avoids 3 subtractions
+    // and 3 divisions per point.
     auto project = [&](float x, float y, float z, float& px, float& py) {
-        // Centre to [-1,+1].
-        const float nx = (x - 127.5F) / 127.5F;
-        const float ny = (y - 127.5F) / 127.5F;
-        const float nz = (z - 127.5F) / 127.5F;
+        // Scale directly: val * invNorm maps [0,255] → [-scale, +scale].
+        const float sx = x * invNorm;
+        const float sy = y * invNorm;
+        const float sz = z * invNorm;
         // Apply yaw (around Y axis).
-        const float rx =  cosYaw * nx + sinYaw * nz;
-        const float rz = -sinYaw * nx + cosYaw * nz;
+        const float rx =  cosYaw * sx + sinYaw * sz;
+        const float rz = -sinYaw * sx + cosYaw * sz;
         // Apply pitch (around X axis).
-        const float ry = cosPitch * ny - sinPitch * rz;
-        const float rz2 = sinPitch * ny + cosPitch * rz;
+        const float ry = cosPitch * sy - sinPitch * rz;
         // Orthographic projection (drop Z after rotation).
-        (void)rz2;
-        px = cx + rx * scale;
-        py = cy + ry * scale;
+        px = offsetCx + rx;
+        py = offsetCy + ry;
     };
 
     ImDrawList* drawList = ImGui::GetWindowDrawList();
@@ -1001,21 +1020,17 @@ void Application::draw3DPlot() {
     const auto& points = m_trigramPlot.points();
     const std::uint32_t maxCount = m_trigramPlot.maxCount();
     const float ptRad = Constants::k3DPlotPointSize;
-    const int alpha = static_cast<int>(m_3dPointOpacity * 255.0F);
+    const ImU32 alphaShift = static_cast<ImU32>(m_3dPointOpacity * 255.0F) << 24;
+    const ImU32* heatLUT = m_heatMapEnabled ? getHeatMapLUT() : nullptr;
 
     for (const auto& pt : points) {
         const std::uint8_t intensity = Core::TrigramPlot::mapIntensity(
             pt.count, maxCount, m_scaleEnabled, m_normalizeEnabled);
         if (intensity == 0) continue;
 
-        ImU32 color;
-        if (m_heatMapEnabled) {
-            // Apply opacity to heat-map colour.
-            const ImU32 base = intensityToHeatMap(intensity);
-            color = (base & 0x00FFFFFF) | (static_cast<ImU32>(alpha) << 24);
-        } else {
-            color = IM_COL32(intensity, intensity, intensity, alpha);
-        }
+        const ImU32 color = heatLUT
+            ? ((heatLUT[intensity] & 0x00FFFFFF) | alphaShift)
+            : IM_COL32(intensity, intensity, intensity, 0) | alphaShift;
 
         float px, py;
         project(static_cast<float>(pt.x),

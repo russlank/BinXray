@@ -35,7 +35,12 @@ void TransitionMatrix::compute(const std::vector<std::uint8_t>& bytes, std::size
         const std::uint8_t current = bytes[index];
         const std::size_t matrixIndex = toIndex(previous, current);
         ++m_counts[matrixIndex];
-        m_maxCount = std::max(m_maxCount, m_counts[matrixIndex]);
+    }
+
+    // Single pass over 64 K entries is faster than a data-dependent
+    // std::max inside the hot accumulation loop above.
+    for (const auto c : m_counts) {
+        if (c > m_maxCount) m_maxCount = c;
     }
 }
 
