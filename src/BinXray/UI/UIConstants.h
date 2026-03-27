@@ -120,5 +120,10 @@ constexpr float k3DPlotDefaultPitch    = 0.52F;    ///< Initial pitch  (radians,
 constexpr float k3DPlotRotationSpeed   = 0.005F;   ///< Radians per mouse-pixel drag.
 constexpr ImU32 k3DPlotAxisColor       = IM_COL32(120, 120, 120, 180);
 constexpr ImU32 k3DPlotBgColor         = IM_COL32( 10,  12,  18, 255);
+constexpr float k3DAutoRotateSpeedDefault = 0.5F;  ///< Default auto-rotation deg/frame.
+constexpr float k3DAutoRotateSpeedMin     = 0.05F;
+constexpr float k3DAutoRotateSpeedMax     = 5.0F;
+constexpr float k3DElevationMin           = -89.0F; ///< Degrees.
+constexpr float k3DElevationMax           =  89.0F;
 
 } // namespace BinXray::UI::Constants

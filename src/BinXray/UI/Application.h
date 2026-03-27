@@ -139,6 +139,9 @@ private:
     Core::TrigramPlot m_trigramPlot;
     float m_3dYaw;
     float m_3dPitch;
+    bool  m_3dAutoRotate;
+    float m_3dAutoRotateSpeed;  ///< Degrees per frame.
+    float m_3dElevationDeg;     ///< Adjustable elevation in degrees.
 };
 
 } // namespace BinXray::UI

@@ -114,7 +114,10 @@ Application::Application()
       m_seekScrollTarget(),
       m_trigramPlot(),
       m_3dYaw(Constants::k3DPlotDefaultYaw),
-      m_3dPitch(Constants::k3DPlotDefaultPitch) {
+      m_3dPitch(Constants::k3DPlotDefaultPitch),
+      m_3dAutoRotate(false),
+      m_3dAutoRotateSpeed(Constants::k3DAutoRotateSpeedDefault),
+      m_3dElevationDeg(30.0F) {
     m_matrixLuminance.fill(0);
 }
 
@@ -651,8 +654,22 @@ void Application::drawControlsColumn() {
         m_ribbonWidth = std::clamp(m_ribbonWidth, Constants::kRibbonWidthMin, Constants::kRibbonWidthMax);
     }
 
+    // 3D auto-rotation controls (only visible in 3D mode).
+    if (m_3dModeEnabled) {
+        ImGui::Separator();
+        ImGui::TextColored(Constants::kControlsLabelColor, "3D Rotation");
+        ImGui::Checkbox("Auto-Rotate", &m_3dAutoRotate);
+        ImGui::SliderFloat("Speed (deg)", &m_3dAutoRotateSpeed,
+            Constants::k3DAutoRotateSpeedMin, Constants::k3DAutoRotateSpeedMax, "%.2f");
+        ImGui::SliderFloat("Elevation", &m_3dElevationDeg,
+            Constants::k3DElevationMin, Constants::k3DElevationMax, "%.1f");
+    }
+
     ImGui::Separator();
     ImGui::TextColored(Constants::kControlsLabelColor, "Seeking");
+
+    // Seeking is not available in 3D mode (2D plot only).
+    ImGui::BeginDisabled(m_3dModeEnabled);
     if (ImGui::Checkbox("Enable Seeking", &m_seek.seekEnabled)) {
         if (!m_seek.seekEnabled) {
             m_seek.frozen = false;
@@ -660,8 +677,9 @@ void Application::drawControlsColumn() {
             m_seek.result = {};
         }
     }
+    ImGui::EndDisabled();
 
-    ImGui::BeginDisabled(!m_seek.seekEnabled);
+    ImGui::BeginDisabled(!m_seek.seekEnabled || m_3dModeEnabled);
     ImGui::Checkbox("Show Coordinates", &m_seek.coordEnabled);
     ImGui::Checkbox("Snap to Data", &m_seek.snapEnabled);
 
@@ -848,13 +866,12 @@ void Application::draw3DPlot() {
 
     const bool isHovered = ImGui::IsItemHovered();
 
-    // Mouse-drag rotation.
-    if (isHovered && ImGui::IsMouseDragging(ImGuiMouseButton_Left)) {
+    // Mouse-drag rotation (only when not auto-rotating).
+    if (!m_3dAutoRotate && isHovered && ImGui::IsMouseDragging(ImGuiMouseButton_Left)) {
         const ImVec2 delta = ImGui::GetIO().MouseDelta;
         m_3dYaw   += delta.x * Constants::k3DPlotRotationSpeed;
         m_3dPitch += delta.y * Constants::k3DPlotRotationSpeed;
-        // Clamp pitch to avoid gimbal flip.
-        constexpr float kPitchMax = 1.50F; // ~86°
+        constexpr float kPitchMax = 1.50F;
         m_3dPitch = std::clamp(m_3dPitch, -kPitchMax, kPitchMax);
     }
 
@@ -862,6 +879,14 @@ void Application::draw3DPlot() {
     if (isHovered && ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left)) {
         m_3dYaw   = Constants::k3DPlotDefaultYaw;
         m_3dPitch = Constants::k3DPlotDefaultPitch;
+        m_3dElevationDeg = 30.0F;
+    }
+
+    // Auto-rotation: advance yaw each frame; use elevation slider for pitch.
+    if (m_3dAutoRotate) {
+        constexpr float kDegToRad = 3.14159265F / 180.0F;
+        m_3dYaw += m_3dAutoRotateSpeed * kDegToRad;
+        m_3dPitch = m_3dElevationDeg * kDegToRad;
     }
 
     // Precompute rotation sin/cos.
