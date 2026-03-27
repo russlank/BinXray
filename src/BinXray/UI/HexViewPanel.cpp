@@ -13,7 +13,7 @@ namespace BinXray::UI {
 
 void HexViewPanel::draw(const Core::BinaryDocument& document, std::size_t& selectedOffset) const {
     ImGui::Begin("Hex View");
-    drawContent(document, selectedOffset, 0, document.bytes().size(), nullptr);
+    drawContent(document, selectedOffset, 0, document.bytes().size(), nullptr, std::nullopt);
     ImGui::End();
 }
 
@@ -21,8 +21,10 @@ void HexViewPanel::drawEmbedded(const Core::BinaryDocument& document,
                                 std::size_t& selectedOffset,
                                 std::size_t rangeStartInclusive,
                                 std::size_t rangeEndExclusive,
-                                const std::vector<std::size_t>* seekHighlightOffsets) const {
-    drawContent(document, selectedOffset, rangeStartInclusive, rangeEndExclusive, seekHighlightOffsets);
+                                const std::vector<std::size_t>* seekHighlightOffsets,
+                                std::optional<std::size_t> scrollToOffset) const {
+    drawContent(document, selectedOffset, rangeStartInclusive, rangeEndExclusive,
+                seekHighlightOffsets, scrollToOffset);
 }
 
 bool HexViewPanel::isInHighlightSet(std::size_t offset,
@@ -38,7 +40,8 @@ void HexViewPanel::drawContent(const Core::BinaryDocument& document,
                                std::size_t& selectedOffset,
                                std::size_t rangeStartInclusive,
                                std::size_t rangeEndExclusive,
-                               const std::vector<std::size_t>* seekHighlightOffsets) const {
+                               const std::vector<std::size_t>* seekHighlightOffsets,
+                               std::optional<std::size_t> scrollToOffset) const {
     const auto& bytes = document.bytes();
     if (bytes.empty()) {
         ImGui::TextUnformatted("No binary data loaded.");
@@ -55,65 +58,78 @@ void HexViewPanel::drawContent(const Core::BinaryDocument& document,
         return;
     }
 
-    const std::size_t bytesPerRow     = Constants::kHexBytesPerRow;
-    const std::size_t maxVisibleBytes = std::min(rangeLength, Constants::kHexMaxVisibleBytes);
+    const std::size_t bytesPerRow = Constants::kHexBytesPerRow;
+    const std::size_t totalRows   = (rangeLength + bytesPerRow - 1) / bytesPerRow;
 
     ImGui::BeginChild("HexViewScrollRegion");
 
-    for (std::size_t relativeOffset = 0; relativeOffset < maxVisibleBytes; relativeOffset += bytesPerRow) {
-        const std::size_t absoluteOffset = rangeStart + relativeOffset;
-        char offsetBuf[13];
-        std::snprintf(offsetBuf, sizeof(offsetBuf), "0x%08zX", absoluteOffset);
-        ImGui::TextUnformatted(offsetBuf);
-        ImGui::SameLine();
-
-        char        asciiBuf[Constants::kHexBytesPerRow + 1];
-        std::size_t asciiLen = 0;
-
-        for (std::size_t column = 0; column < bytesPerRow && (relativeOffset + column) < maxVisibleBytes; ++column) {
-            const std::size_t  index      = absoluteOffset + column;
-            const bool         isSelected = (index == selectedOffset);
-            const bool         isSeekHit  = isInHighlightSet(index, seekHighlightOffsets);
-            const std::uint8_t byteVal    = bytes[index];
-
-            asciiBuf[asciiLen++] = (byteVal >= 0x20 && byteVal <= 0x7E) ? static_cast<char>(byteVal) : '.';
-
-            char hexBuf[3];
-            std::snprintf(hexBuf, sizeof(hexBuf), "%02X", static_cast<unsigned int>(byteVal));
-
-            if (isSelected) {
-                ImGui::PushStyleColor(ImGuiCol_Button,        Constants::kHexSelectedColor);
-                ImGui::PushStyleColor(ImGuiCol_ButtonHovered, Constants::kHexSelectedHoveredColor);
-            } else if (isSeekHit) {
-                ImGui::PushStyleColor(ImGuiCol_Button,        Constants::kHexSeekHighlightColor);
-                ImGui::PushStyleColor(ImGuiCol_ButtonHovered, Constants::kHexSeekHighlightHovered);
-            }
-
-            ImGui::PushID(static_cast<int>(index));
-            if (ImGui::SmallButton(hexBuf)) {
-                selectedOffset = index;
-            }
-            ImGui::PopID();
-
-            if (isSelected) {
-                ImGui::PopStyleColor(2);
-            } else if (isSeekHit) {
-                ImGui::PopStyleColor(2);
-            }
-
-            if (column + 1 < bytesPerRow && (relativeOffset + column + 1) < maxVisibleBytes) {
-                ImGui::SameLine();
-            }
+    // Jump to the row containing the requested offset.
+    if (scrollToOffset.has_value()) {
+        const std::size_t target = *scrollToOffset;
+        if (target >= rangeStart && target < rangeEnd) {
+            const std::size_t targetRow = (target - rangeStart) / bytesPerRow;
+            const float rowHeight  = ImGui::GetTextLineHeightWithSpacing();
+            const float viewHeight = ImGui::GetWindowHeight();
+            ImGui::SetScrollY(std::max(0.0F,
+                static_cast<float>(targetRow) * rowHeight - viewHeight * 0.3F));
         }
-
-        asciiBuf[asciiLen] = '\0';
-        ImGui::SameLine();
-        ImGui::TextUnformatted(asciiBuf);
     }
 
-    if (rangeLength > maxVisibleBytes) {
-        ImGui::Separator();
-        ImGui::Text("Showing first %zu bytes of selected %zu-byte range.", maxVisibleBytes, rangeLength);
+    ImGuiListClipper clipper;
+    clipper.Begin(static_cast<int>(totalRows));
+    while (clipper.Step()) {
+        for (int rowIdx = clipper.DisplayStart; rowIdx < clipper.DisplayEnd; ++rowIdx) {
+            const std::size_t relativeOffset = static_cast<std::size_t>(rowIdx) * bytesPerRow;
+            const std::size_t absoluteOffset = rangeStart + relativeOffset;
+            const std::size_t rowBytes = std::min(bytesPerRow, rangeLength - relativeOffset);
+
+            char offsetBuf[13];
+            std::snprintf(offsetBuf, sizeof(offsetBuf), "0x%08zX", absoluteOffset);
+            ImGui::TextUnformatted(offsetBuf);
+            ImGui::SameLine();
+
+            char        asciiBuf[Constants::kHexBytesPerRow + 1];
+            std::size_t asciiLen = 0;
+
+            for (std::size_t column = 0; column < rowBytes; ++column) {
+                const std::size_t  index      = absoluteOffset + column;
+                const bool         isSelected = (index == selectedOffset);
+                const bool         isSeekHit  = isInHighlightSet(index, seekHighlightOffsets);
+                const std::uint8_t byteVal    = bytes[index];
+
+                asciiBuf[asciiLen++] = (byteVal >= 0x20 && byteVal <= 0x7E)
+                    ? static_cast<char>(byteVal) : '.';
+
+                char hexBuf[3];
+                std::snprintf(hexBuf, sizeof(hexBuf), "%02X", static_cast<unsigned int>(byteVal));
+
+                if (isSelected) {
+                    ImGui::PushStyleColor(ImGuiCol_Button,        Constants::kHexSelectedColor);
+                    ImGui::PushStyleColor(ImGuiCol_ButtonHovered, Constants::kHexSelectedHoveredColor);
+                } else if (isSeekHit) {
+                    ImGui::PushStyleColor(ImGuiCol_Button,        Constants::kHexSeekHighlightColor);
+                    ImGui::PushStyleColor(ImGuiCol_ButtonHovered, Constants::kHexSeekHighlightHovered);
+                }
+
+                ImGui::PushID(static_cast<int>(index));
+                if (ImGui::SmallButton(hexBuf)) {
+                    selectedOffset = index;
+                }
+                ImGui::PopID();
+
+                if (isSelected || isSeekHit) {
+                    ImGui::PopStyleColor(2);
+                }
+
+                if (column + 1 < rowBytes) {
+                    ImGui::SameLine();
+                }
+            }
+
+            asciiBuf[asciiLen] = '\0';
+            ImGui::SameLine();
+            ImGui::TextUnformatted(asciiBuf);
+        }
     }
 
     ImGui::EndChild();

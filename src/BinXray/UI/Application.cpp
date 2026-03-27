@@ -75,7 +75,8 @@ Application::Application()
       m_lastLoadError(),
       m_ribbonWidth(Constants::kRibbonWidthDefault),
       m_hexViewPanel(),
-      m_seek() {
+      m_seek(),
+      m_seekScrollTarget() {
     m_matrixLuminance.fill(0);
 }
 
@@ -419,22 +420,71 @@ void Application::updateSeekFromPlot(float originX, float originY, float plotSiz
     }
 
     constexpr float dim = static_cast<float>(Core::TransitionMatrix::kDimension);
-    const auto col = static_cast<std::uint8_t>(std::clamp(localX * dim / plotSize, 0.0F, 255.0F));
-    const auto row = static_cast<std::uint8_t>(std::clamp(localY * dim / plotSize, 0.0F, 255.0F));
+    auto col = static_cast<int>(std::clamp(localX * dim / plotSize, 0.0F, 255.0F));
+    auto row = static_cast<int>(std::clamp(localY * dim / plotSize, 0.0F, 255.0F));
+
+    // Snap to nearest non-empty cell when enabled.
+    if (m_seek.snapEnabled &&
+        m_transitionMatrix.count(static_cast<std::uint8_t>(row),
+                                 static_cast<std::uint8_t>(col)) == 0) {
+        float bestDistSq = 256.0F * 256.0F * 2.0F;
+        int bestRow = -1;
+        int bestCol = -1;
+        const int maxR = Constants::kSeekSnapMaxRadius;
+        for (int r = 1; r <= maxR; ++r) {
+            bool found = false;
+            for (int dr = -r; dr <= r; ++dr) {
+                for (int dc = -r; dc <= r; ++dc) {
+                    if (std::abs(dr) != r && std::abs(dc) != r) {
+                        continue;
+                    }
+                    const int cr = row + dr;
+                    const int cc = col + dc;
+                    if (cr < 0 || cr >= 256 || cc < 0 || cc >= 256) {
+                        continue;
+                    }
+                    if (m_transitionMatrix.count(static_cast<std::uint8_t>(cr),
+                                                 static_cast<std::uint8_t>(cc)) > 0) {
+                        const float dSq = static_cast<float>(dr * dr + dc * dc);
+                        if (dSq < bestDistSq) {
+                            bestDistSq = dSq;
+                            bestRow = cr;
+                            bestCol = cc;
+                            found = true;
+                        }
+                    }
+                }
+            }
+            if (found) {
+                break;
+            }
+        }
+        if (bestRow >= 0) {
+            row = bestRow;
+            col = bestCol;
+        } else {
+            m_seek.valid = false;
+            m_seek.result = {};
+            return;
+        }
+    }
+
+    const auto fromByte = static_cast<std::uint8_t>(row);
+    const auto toByte = static_cast<std::uint8_t>(col);
 
     // Avoid redundant re-scan when cursor stays on the same cell.
-    if (m_seek.valid && m_seek.fromByte == row && m_seek.toByte == col) {
+    if (m_seek.valid && m_seek.fromByte == fromByte && m_seek.toByte == toByte) {
         return;
     }
 
-    m_seek.fromByte = row;
-    m_seek.toByte = col;
+    m_seek.fromByte = fromByte;
+    m_seek.toByte = toByte;
     m_seek.valid = true;
     m_seek.result = Core::findTransitionOffsets(
         m_document.bytes(),
         m_transitionMatrix.startOffset(),
         m_transitionMatrix.endOffset(),
-        row, col,
+        fromByte, toByte,
         Constants::kSeekMaxAddresses);
 }
 
@@ -565,6 +615,7 @@ void Application::drawControlsColumn() {
 
     ImGui::BeginDisabled(!m_seek.seekEnabled);
     ImGui::Checkbox("Show Coordinates", &m_seek.coordEnabled);
+    ImGui::Checkbox("Snap to Data", &m_seek.snapEnabled);
 
     if (m_seek.frozen) {
         if (ImGui::Button("Unfreeze", ImVec2(-1.0F, 0.0F))) {
@@ -707,20 +758,24 @@ void Application::drawMatrixPlot() {
 
 void Application::drawSeekAddressList() {
     if (!m_seek.seekEnabled || !m_seek.valid || m_seek.result.offsets.empty()) {
+        ImGui::TextDisabled("No addresses");
         return;
     }
 
-    ImGui::Separator();
-    ImGui::Text("Addresses for 0x%02X->0x%02X (%u total):",
+    ImGui::Text("0x%02X -> 0x%02X (%u)",
                 m_seek.fromByte, m_seek.toByte, m_seek.result.transitionCount);
+    if (m_seek.result.offsets.size() < m_seek.result.transitionCount) {
+        ImGui::TextDisabled("first %zu shown", m_seek.result.offsets.size());
+    }
+    ImGui::Separator();
 
-    const float listHeight = std::min(120.0F, ImGui::GetContentRegionAvail().y * 0.4F);
-    ImGui::BeginChild("SeekAddressList", ImVec2(0.0F, listHeight), true);
+    ImGui::BeginChild("SeekAddrScroll");
     for (const std::size_t offset : m_seek.result.offsets) {
         char addrBuf[20];
         std::snprintf(addrBuf, sizeof(addrBuf), "0x%08zX", offset);
         if (ImGui::Selectable(addrBuf, offset == m_selectedOffset)) {
             m_selectedOffset = offset;
+            m_seekScrollTarget = offset;
         }
     }
     ImGui::EndChild();
@@ -734,25 +789,52 @@ void Application::drawCenterColumn() {
 
     ImGui::BeginChild("MatrixView", ImVec2(0.0F, plotHeight), true);
     drawMatrixPlot();
-    drawSeekAddressList();
     ImGui::EndChild();
 
     ImGui::Spacing();
-    ImGui::BeginChild("HexView", ImVec2(0.0F, 0.0F), true);
-    ImGui::TextUnformatted("Hex View");
-    ImGui::Separator();
 
     const std::vector<std::size_t>* seekOffsets =
         (m_seek.seekEnabled && m_seek.valid && !m_seek.result.offsets.empty())
             ? &m_seek.result.offsets : nullptr;
 
-    m_hexViewPanel.drawEmbedded(
-        m_document,
-        m_selectedOffset,
-        m_transitionMatrix.startOffset(),
-        m_transitionMatrix.endOffset(),
-        seekOffsets);
-    ImGui::EndChild();
+    const bool showAddresses = seekOffsets != nullptr;
+
+    if (showAddresses) {
+        const float spacing   = ImGui::GetStyle().ItemSpacing.x;
+        const float fullWidth = ImGui::GetContentRegionAvail().x;
+        const float addrWidth = Constants::kSeekAddressPanelWidth;
+        const float hexWidth  = fullWidth - addrWidth - spacing;
+
+        ImGui::BeginChild("HexView", ImVec2(hexWidth, 0.0F), true);
+        ImGui::TextUnformatted("Hex View");
+        ImGui::Separator();
+        m_hexViewPanel.drawEmbedded(
+            m_document, m_selectedOffset,
+            m_transitionMatrix.startOffset(),
+            m_transitionMatrix.endOffset(),
+            seekOffsets, m_seekScrollTarget);
+        m_seekScrollTarget.reset();
+        ImGui::EndChild();
+
+        ImGui::SameLine();
+
+        ImGui::BeginChild("SeekAddresses", ImVec2(0.0F, 0.0F), true);
+        ImGui::TextUnformatted("Addresses");
+        ImGui::Separator();
+        drawSeekAddressList();
+        ImGui::EndChild();
+    } else {
+        ImGui::BeginChild("HexView", ImVec2(0.0F, 0.0F), true);
+        ImGui::TextUnformatted("Hex View");
+        ImGui::Separator();
+        m_hexViewPanel.drawEmbedded(
+            m_document, m_selectedOffset,
+            m_transitionMatrix.startOffset(),
+            m_transitionMatrix.endOffset(),
+            seekOffsets, m_seekScrollTarget);
+        m_seekScrollTarget.reset();
+        ImGui::EndChild();
+    }
 }
 
 void Application::drawRibbonColumn() {
@@ -843,6 +925,45 @@ void Application::drawRibbonColumn() {
             drawList->AddRect(ImVec2(sx0, sy0), ImVec2(sx0 + pixelScale, sy0 + pixelScale),
                               Constants::kSeekHighlightBorder, 0.0F, 0, 1.0F);
         }
+    }
+
+    // Draw cursor pointer triangles for the selected offset.
+    if (m_selectedOffset < bytes.size()) {
+        const std::size_t curRow = m_selectedOffset / ribbonWidth;
+        const std::size_t curCol = m_selectedOffset % ribbonWidth;
+        const float cellCenterX = contentOrigin.x + (static_cast<float>(curCol) + 0.5F) * pixelScale;
+        const float cellCenterY = contentOrigin.y + (static_cast<float>(curRow) + 0.5F) * pixelScale;
+        const float triSz = Constants::kRibbonCursorTriSize;
+        const ImU32 triCol = Constants::kRibbonCursorColor;
+
+        // Left-edge triangle pointing right → row indicator.
+        const float leftX = contentOrigin.x;
+        drawList->AddTriangleFilled(
+            ImVec2(leftX,            cellCenterY - triSz),
+            ImVec2(leftX,            cellCenterY + triSz),
+            ImVec2(leftX + triSz,    cellCenterY),
+            triCol);
+
+        // Right-edge triangle pointing left → row indicator (mirror).
+        const float rightX = contentOrigin.x + contentWidth;
+        drawList->AddTriangleFilled(
+            ImVec2(rightX,           cellCenterY - triSz),
+            ImVec2(rightX,           cellCenterY + triSz),
+            ImVec2(rightX - triSz,   cellCenterY),
+            triCol);
+
+        // Coordinate label between the triangles (right side).
+        char curLabel[24];
+        std::snprintf(curLabel, sizeof(curLabel), "%zu:%zu", curRow, curCol);
+        const ImVec2 labelSize = ImGui::CalcTextSize(curLabel);
+        const float pad = 2.0F;
+        const float labelX = rightX + pad;
+        const float labelY = cellCenterY - labelSize.y * 0.5F;
+        drawList->AddRectFilled(
+            ImVec2(labelX - pad, labelY - pad),
+            ImVec2(labelX + labelSize.x + pad, labelY + labelSize.y + pad),
+            Constants::kRibbonCursorLabelBg, 2.0F);
+        drawList->AddText(ImVec2(labelX, labelY), Constants::kRibbonCursorLabelText, curLabel);
     }
 
     ImGui::EndChild();

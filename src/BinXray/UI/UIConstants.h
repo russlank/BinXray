@@ -45,6 +45,10 @@ constexpr ImU32          kRibbonHighlightFill   = IM_COL32(255, 220,  70,  28);
 constexpr ImU32          kRibbonHighlightBorder = IM_COL32(255, 220,  70, 180);
 constexpr std::uint8_t   kRibbonByteColorR      = 32;
 constexpr std::uint8_t   kRibbonByteColorB      = 64;
+constexpr ImU32          kRibbonCursorColor      = IM_COL32(220,  50,  50, 230);
+constexpr ImU32          kRibbonCursorLabelBg    = IM_COL32(220,  50,  50, 200);
+constexpr ImU32          kRibbonCursorLabelText  = IM_COL32(255, 255, 255, 255);
+constexpr float          kRibbonCursorTriSize    = 7.0F;
 
 // ── Hex view ──────────────────────────────────────────────────────────────────
 constexpr std::size_t kHexBytesPerRow          = 16;
@@ -70,5 +74,7 @@ constexpr ImU32  kHexSeekHighlightHovered  = IM_COL32(220, 180,  60, 255);
 constexpr float  kSeekCrosshairThickness   = 1.0F;
 constexpr float  kSeekCoordFontScale       = 0.85F;
 constexpr std::size_t kSeekMaxAddresses    = 256;
+constexpr float  kSeekAddressPanelWidth    = 130.0F;
+constexpr int    kSeekSnapMaxRadius        = 24;
 
 } // namespace BinXray::UI::Constants

@@ -30,6 +30,7 @@ namespace BinXray::UI {
 struct SeekState {
     bool seekEnabled       = false;   ///< Master toggle for the seeking feature.
     bool coordEnabled      = true;    ///< Show crosshair + coordinate labels.
+    bool snapEnabled       = false;   ///< Snap crosshair to nearest non-empty cell.
     bool frozen            = false;   ///< True while seek is click-locked.
     bool valid             = false;   ///< True when fromByte/toByte hold meaningful data.
     std::uint8_t fromByte  = 0;       ///< Row (previous byte value) under cursor.
@@ -106,6 +107,7 @@ private:
     int m_ribbonWidth;
     HexViewPanel m_hexViewPanel;
     SeekState m_seek;
+    std::optional<std::size_t> m_seekScrollTarget;
 };
 
 } // namespace BinXray::UI
