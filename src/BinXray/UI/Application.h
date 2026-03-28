@@ -149,6 +149,7 @@ private:
     float m_3dPointOpacity;            ///< Alpha multiplier for scatter dots (0.05..1.0).
     int   m_3dBgMode;                  ///< 0 = Black, 1 = White, 2 = Custom.
     float m_3dBgCustomColor[3];        ///< RGB triplet for Custom background mode.
+    bool  m_locateInPlotEnabled;       ///< Show crosshair locator for hex selection on plots.
 };
 
 } // namespace BinXray::UI

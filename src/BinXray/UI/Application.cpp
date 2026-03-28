@@ -6,6 +6,7 @@
 
 #include "Application.h"
 
+#include "Core/CrosshairCoords.h"
 #include "UIConstants.h"
 #include "Version.h"
 #include "resource.h"
@@ -136,7 +137,8 @@ Application::Application()
       m_3dBgMode(Constants::k3DBgModeDefault),
       m_3dBgCustomColor{Constants::k3DBgCustomDefault[0],
                         Constants::k3DBgCustomDefault[1],
-                        Constants::k3DBgCustomDefault[2]} {
+                        Constants::k3DBgCustomDefault[2]},
+      m_locateInPlotEnabled(true) {
     m_matrixLuminance.fill(0);
 }
 
@@ -796,6 +798,7 @@ void Application::drawControlsColumn() {
         ImGui::TextColored(Constants::kControlsLabelColor, "Selected Byte:");
         ImGui::SameLine();
         ImGui::Text("%u", static_cast<unsigned int>(value));
+        ImGui::Checkbox("Locate in Plot", &m_locateInPlotEnabled);
     }
 }
 
@@ -899,6 +902,33 @@ void Application::drawMatrixPlot() {
         drawList->AddRect(ImVec2(cellX0, cellY0), ImVec2(cellX0 + cellSize, cellY0 + cellSize),
                           Constants::kSeekHighlightBorder, 0.0F, 0, 2.0F);
     }
+
+    // Draw hex-view-driven crosshairs: red hair coordinates and ringed dots
+    // at all transition pairs involving the currently selected byte offset.
+    // A byte participates in up to 2 pairs: as "to" and as "from".
+    if (m_locateInPlotEnabled) {
+    const auto hexCoords2D = Core::transitionCoordsAt(bytes, m_selectedOffset);
+    for (std::size_t ci = 0; ci < hexCoords2D.count; ++ci) {
+        const auto& coord = hexCoords2D.coords[ci];
+        const float hcX = origin.x + (static_cast<float>(coord.toByte) + 0.5F) * cellSize;
+        const float hcY = origin.y + (static_cast<float>(coord.fromByte) + 0.5F) * cellSize;
+
+        // Red crosshair lines.
+        drawList->AddLine(ImVec2(hcX, origin.y), ImVec2(hcX, origin.y + plotSize),
+                          Constants::kHexCrosshairColor, Constants::kHexCrosshairThickness);
+        drawList->AddLine(ImVec2(origin.x, hcY), ImVec2(origin.x + plotSize, hcY),
+                          Constants::kHexCrosshairColor, Constants::kHexCrosshairThickness);
+
+        // Contrast ring then filled red circle at intersection.
+        drawList->AddCircle(ImVec2(hcX, hcY),
+                            Constants::kHexCrosshairRingRadius,
+                            Constants::kHexCrosshairRingColor, 0,
+                            Constants::kHexCrosshairRingThickness);
+        drawList->AddCircleFilled(ImVec2(hcX, hcY),
+                                  Constants::kHexCrosshairPointRadius,
+                                  Constants::kHexCrosshairPointColor);
+    }
+    } // m_locateInPlotEnabled
 }
 
 void Application::draw3DPlot() {
@@ -1055,6 +1085,83 @@ void Application::draw3DPlot() {
         drawList->AddRectFilled(ImVec2(px - ptRad, py - ptRad),
                                 ImVec2(px + ptRad, py + ptRad), color);
     }
+
+    // Draw hex-view-driven crosshairs in 3D: red hair lines along the three
+    // axes through each trigram point involving the selected offset, plus
+    // ringed red dots at each projected point.
+    // A byte participates in up to 3 trigrams: as x, y, or z component.
+    if (m_locateInPlotEnabled) {
+    const auto hexCoords3D = Core::trigramCoordsAt(bytes, m_selectedOffset);
+
+    // Precompute background-adaptive ring colour (white ring on dark, black on light).
+    ImU32 ringColor = Constants::kHexCrosshairRingColor;
+    if (hexCoords3D.count > 0) {
+        float bgLum = 0.0F;
+        if (m_3dBgMode == Constants::k3DBgModeWhite) {
+            bgLum = 0.94F;
+        } else if (m_3dBgMode == Constants::k3DBgModeCustom) {
+            bgLum = 0.299F * m_3dBgCustomColor[0] + 0.587F * m_3dBgCustomColor[1]
+                  + 0.114F * m_3dBgCustomColor[2];
+        } else {
+            bgLum = 0.05F; // black preset
+        }
+        ringColor = (bgLum > 0.5F)
+            ? Constants::kHexCrosshairRingDark
+            : Constants::kHexCrosshairRingColor;
+    }
+
+    for (std::size_t ci = 0; ci < hexCoords3D.count; ++ci) {
+        const float tx = static_cast<float>(hexCoords3D.coords[ci].x);
+        const float ty = static_cast<float>(hexCoords3D.coords[ci].y);
+        const float tz = static_cast<float>(hexCoords3D.coords[ci].z);
+
+        // Draw three axis-aligned hair lines through this trigram point.
+        constexpr int kHairSegments = 64;
+        constexpr float kStep = 255.0F / static_cast<float>(kHairSegments);
+
+        // X-axis line (vary x, fix y,z).
+        for (int seg = 0; seg < kHairSegments; ++seg) {
+            float a = static_cast<float>(seg) * kStep;
+            float b = a + kStep;
+            float ax, ay, bx, by;
+            project(a, ty, tz, ax, ay);
+            project(b, ty, tz, bx, by);
+            drawList->AddLine(ImVec2(ax, ay), ImVec2(bx, by),
+                              Constants::kHexCrosshairColor, Constants::kHexCrosshairThickness);
+        }
+        // Y-axis line (vary y, fix x,z).
+        for (int seg = 0; seg < kHairSegments; ++seg) {
+            float a = static_cast<float>(seg) * kStep;
+            float b = a + kStep;
+            float ax, ay, bx, by;
+            project(tx, a, tz, ax, ay);
+            project(tx, b, tz, bx, by);
+            drawList->AddLine(ImVec2(ax, ay), ImVec2(bx, by),
+                              Constants::kHexCrosshairColor, Constants::kHexCrosshairThickness);
+        }
+        // Z-axis line (vary z, fix x,y).
+        for (int seg = 0; seg < kHairSegments; ++seg) {
+            float a = static_cast<float>(seg) * kStep;
+            float b = a + kStep;
+            float ax, ay, bx, by;
+            project(tx, ty, a, ax, ay);
+            project(tx, ty, b, bx, by);
+            drawList->AddLine(ImVec2(ax, ay), ImVec2(bx, by),
+                              Constants::kHexCrosshairColor, Constants::kHexCrosshairThickness);
+        }
+
+        // Projected point marker: contrast ring + filled red circle.
+        float pointPx, pointPy;
+        project(tx, ty, tz, pointPx, pointPy);
+        drawList->AddCircle(ImVec2(pointPx, pointPy),
+                            Constants::kHexCrosshairRingRadius,
+                            ringColor, 0,
+                            Constants::kHexCrosshairRingThickness);
+        drawList->AddCircleFilled(ImVec2(pointPx, pointPy),
+                                  Constants::kHexCrosshairPointRadius,
+                                  Constants::kHexCrosshairPointColor);
+    }
+    } // m_locateInPlotEnabled
 
     drawList->PopClipRect();
 

@@ -72,6 +72,9 @@ constexpr std::size_t kHexBytesPerRow          = 16;
 constexpr std::size_t kHexMaxVisibleBytes      = 4096;  ///< Legacy cap (unused with clipper).
 constexpr ImU32       kHexSelectedColor        = IM_COL32( 55, 120, 220, 255);
 constexpr ImU32       kHexSelectedHoveredColor = IM_COL32( 75, 140, 240, 255);
+/// White background with black text for the focused ASCII character.
+constexpr ImU32       kHexFocusedAsciiBg       = IM_COL32(255, 255, 255, 255);
+constexpr ImU32       kHexFocusedAsciiText     = IM_COL32(  0,   0,   0, 255);
 
 // ── Controls ──────────────────────────────────────────────────────────────────
 constexpr ImVec4 kErrorTextColor   = {0.95F, 0.40F, 0.40F, 1.0F};
@@ -92,6 +95,17 @@ constexpr ImU32  kHexSeekHighlightColor    = IM_COL32(200, 160,  40, 255);
 constexpr ImU32  kHexSeekHighlightHovered  = IM_COL32(220, 180,  60, 255);
 constexpr float  kSeekCrosshairThickness   = 1.0F;
 constexpr float  kSeekCoordFontScale       = 0.85F;
+/// Red-orange crosshair for hex-view-driven coordinate tracking on 2D/3D plots.
+/// Distinct from the gold seeking cursor so both overlays are distinguishable.
+constexpr ImU32  kHexCrosshairColor        = IM_COL32(220,  60,  50, 200);
+constexpr float  kHexCrosshairThickness    = 1.0F;
+constexpr ImU32  kHexCrosshairPointColor   = IM_COL32(230,  50,  40, 255);
+constexpr ImU32  kHexCrosshairPointDark    = IM_COL32(200,  30,  20, 255);
+constexpr float  kHexCrosshairPointRadius  = 3.0F;
+constexpr ImU32  kHexCrosshairRingColor    = IM_COL32(255, 255, 255, 220);
+constexpr ImU32  kHexCrosshairRingDark     = IM_COL32(  0,   0,   0, 220);
+constexpr float  kHexCrosshairRingRadius   = 5.0F;
+constexpr float  kHexCrosshairRingThickness = 1.5F;
 constexpr std::size_t kSeekMaxAddresses    = 256;
 constexpr float  kSeekAddressPanelWidth    = 130.0F;  ///< Width of the address list beside the hex view.
 constexpr int    kSeekSnapMaxRadius        = 24;       ///< Chebyshev radius for snap-to-data search.
@@ -127,7 +141,7 @@ constexpr float k3DElevationMax           =  89.0F;
 
 // ── 3D point opacity ─────────────────────────────────────────────────────────
 /// Controls transparency of scatter-plot dots so dense regions remain readable.
-constexpr float k3DOpacityDefault = 1.0F;
+constexpr float k3DOpacityDefault = 0.30F;
 constexpr float k3DOpacityMin     = 0.05F;
 constexpr float k3DOpacityMax     = 1.0F;
 
