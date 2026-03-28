@@ -13,6 +13,7 @@ bool runBinaryDocumentTests();
 bool runTransitionMatrixTests();
 bool runTransitionSeekerTests();
 bool runTrigramPlotTests();
+bool runCrosshairCoordsTests();
 
 int main() {
     int failedSuites = 0;
@@ -34,6 +35,10 @@ int main() {
     }
 
     if (!runTrigramPlotTests()) {
+        ++failedSuites;
+    }
+
+    if (!runCrosshairCoordsTests()) {
         ++failedSuites;
     }
 

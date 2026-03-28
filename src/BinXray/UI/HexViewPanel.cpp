@@ -133,15 +133,23 @@ void HexViewPanel::drawContent(const Core::BinaryDocument& document,
             ImGui::SameLine();
 
             // Render ASCII column with per-character colouring to match
-            // the hex byte highlight state (selected → blue, seek-hit → gold).
+            // the hex byte highlight state (selected → white bg/black text,
+            // seek-hit → gold).
             for (std::size_t ai = 0; ai < asciiLen; ++ai) {
                 const std::size_t aiOffset   = absoluteOffset + ai;
                 const bool        aiSelected = (aiOffset == selectedOffset);
                 const bool        aiSeekHit  = isInHighlightSet(aiOffset, seekHighlightOffsets);
                 const char ch[2] = {asciiBuf[ai], '\0'};
                 if (aiSelected) {
+                    // White background + black text for clearly visible focus.
+                    const ImVec2 textPos = ImGui::GetCursorScreenPos();
+                    const ImVec2 textSize = ImGui::CalcTextSize(ch);
+                    ImDrawList* dl = ImGui::GetWindowDrawList();
+                    dl->AddRectFilled(textPos,
+                        ImVec2(textPos.x + textSize.x, textPos.y + textSize.y),
+                        Constants::kHexFocusedAsciiBg);
                     ImGui::TextColored(
-                        ImGui::ColorConvertU32ToFloat4(Constants::kHexSelectedColor),
+                        ImGui::ColorConvertU32ToFloat4(Constants::kHexFocusedAsciiText),
                         "%s", ch);
                 } else if (aiSeekHit) {
                     ImGui::TextColored(

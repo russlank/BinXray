@@ -67,6 +67,9 @@
     <ClInclude Include="Core\ByteFormatter.h">
       <Filter>Core</Filter>
     </ClInclude>
+    <ClInclude Include="Core\CrosshairCoords.h">
+      <Filter>Core</Filter>
+    </ClInclude>
     <ClInclude Include="UI\Application.h">
       <Filter>UI</Filter>
     </ClInclude>

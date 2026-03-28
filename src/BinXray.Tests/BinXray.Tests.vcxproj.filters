@@ -21,6 +21,9 @@
     <ClCompile Include="TransitionMatrixTests.cpp">
       <Filter>Tests</Filter>
     </ClCompile>
+    <ClCompile Include="CrosshairCoordsTests.cpp">
+      <Filter>Tests</Filter>
+    </ClCompile>
     <ClCompile Include="..\BinXray\Core\ByteFormatter.cpp">
       <Filter>Shared</Filter>
     </ClCompile>
