@@ -131,15 +131,20 @@ recomputation is active, the loop calls
 input or paint message.  This drops CPU and GPU utilisation to near-zero
 when the application is idle.
 
+### 3D-Mode-Gated Trigram Recompute
+`Application::rebuildMatrixIfDirty()` computes the trigram cube only when
+3D mode is active.  In 2D mode, only the transition matrix is recomputed,
+which reduces scrub latency and avoids unnecessary 64 MB worker-buffer churn.
+
 ## Test Strategy
 
-- `BinXray.Tests` runs five suites: `ByteFormatterTests`,
+- `BinXray.Tests` runs six suites: `ByteFormatterTests`,
   `BinaryDocumentTests`, `TransitionMatrixTests`, `TransitionSeekerTests`,
-  `TrigramPlotTests`.
-- Edge cases covered: empty data, single byte, sub-ranges, boundary
-  clamping, maxResults capping, self-transitions, inverted ranges,
-  repeated trigram accumulation, mapIntensity modes, opacity-alpha
-  scaling validation.
+  `TrigramPlotTests`, `CrosshairCoordsTests`.
+- Edge cases covered: missing/empty file loads, single byte, sub-ranges,
+  boundary clamping, maxResults capping, self-transitions, inverted
+  ranges, repeated trigram accumulation, mapIntensity modes, crosshair
+  coordinate semantics, opacity-alpha scaling validation.
 - Process exit code reflects suite pass/fail for CI gating.
 
 ## Planned Evolution

@@ -88,6 +88,8 @@ private:
     void drawRibbonColumn();
 
     void updateSeekFromPlot(float originX, float originY, float plotSize);
+    /// Re-scan offsets for the currently selected seek pair in the active range.
+    void refreshSeekResult();
     void invalidateSeek();
 
     /// True when ongoing animation or async work requires per-frame rendering.
@@ -105,6 +107,10 @@ private:
     HWND m_hWnd;
     bool m_running;
     bool m_initialized;
+    bool m_windowClassRegistered;  ///< True after RegisterClassExW succeeds.
+    bool m_imguiContextCreated;    ///< True after ImGui::CreateContext().
+    bool m_imguiWin32Initialized;  ///< True after ImGui_ImplWin32_Init().
+    bool m_imguiDx11Initialized;   ///< True after ImGui_ImplDX11_Init().
 
     IDXGISwapChain* m_swapChain;
     ID3D11Device* m_device;

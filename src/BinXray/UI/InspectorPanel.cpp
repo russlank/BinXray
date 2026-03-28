@@ -24,7 +24,9 @@ void InspectorPanel::draw(const Core::BinaryDocument& document, std::size_t sele
     }
 
     const std::uint8_t value = bytes[selectedOffset];
-    const char printable = std::isprint(value) ? static_cast<char>(value) : '.';
+    const char printable = std::isprint(static_cast<unsigned char>(value))
+        ? static_cast<char>(value)
+        : '.';
 
     ImGui::Text("Offset: 0x%zX (%zu)", selectedOffset, selectedOffset);
     ImGui::Text("Hex: %s", Core::formatByteHex(value).c_str());

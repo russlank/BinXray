@@ -52,13 +52,14 @@ A companion **3D byte-trigram scatter plot** extends the analysis into three dim
 
 ### Performance
 - **Dirty-index tracking** in trigram computation: only written voxels are zeroed between recomputations, avoiding a full 64 MB clear.
+- **3D-mode-gated trigram recompute**: trigram accumulation is skipped while in 2D mode, reducing scrubbing cost when only the transition matrix is visible.
 - **Static heat-map LUT**: a 256-entry colour lookup table is built once and shared by both 2D and 3D rendering.
 - **Optimised projection math**: division folded into scale factor; bit-shift row/column indexing in the 2D matrix loop.
 - **Event-driven idle rendering**: when nothing is animating or loading, the main loop sleeps via `MsgWaitForMultipleObjects`, dropping CPU/GPU utilisation to near-zero.
 
 ### Testing
-- Five automated test suites: `ByteFormatterTests`, `BinaryDocumentTests`, `TransitionMatrixTests`, `TransitionSeekerTests`, `TrigramPlotTests`.
-- Edge cases covered: empty data, single byte, sub-ranges, boundary clamping, maxResults capping, self-transitions, inverted ranges, repeated trigram accumulation, mapIntensity modes, opacity-alpha validation.
+- Six automated test suites: `ByteFormatterTests`, `BinaryDocumentTests`, `TransitionMatrixTests`, `TransitionSeekerTests`, `TrigramPlotTests`, `CrosshairCoordsTests`.
+- Edge cases covered: empty/missing files, single byte, sub-ranges, boundary clamping, maxResults capping, self-transitions, inverted ranges, repeated trigram accumulation, mapIntensity modes, crosshair coordinate semantics, opacity-alpha validation.
 
 ## Requirements
 

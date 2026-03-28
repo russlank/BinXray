@@ -54,6 +54,16 @@ std::wstring createTempFilePath() {
     return std::wstring(tempFilePath);
 }
 
+std::wstring createMissingTempFilePath() {
+    std::wstring tempFilePath = createTempFilePath();
+    if (tempFilePath.empty()) {
+        return {};
+    }
+
+    ::DeleteFileW(tempFilePath.c_str());
+    return tempFilePath;
+}
+
 bool writeFile(const std::wstring& path, const std::vector<std::uint8_t>& bytes) {
     std::ofstream file(path, std::ios::binary | std::ios::trunc);
     if (!file.is_open()) {
@@ -71,6 +81,32 @@ bool writeFile(const std::wstring& path, const std::vector<std::uint8_t>& bytes)
 
 bool runBinaryDocumentTests() {
     bool passed = true;
+
+    const std::wstring missingPath = createMissingTempFilePath();
+    passed = expectTrue(!missingPath.empty(), "createMissingTempFilePath") && passed;
+    if (!missingPath.empty()) {
+        const BinXray::Core::BinaryLoadResult missingLoadResult =
+            BinXray::Core::BinaryDocument::loadFileBytes(missingPath);
+        passed = expectTrue(!missingLoadResult.success, "BinaryDocument::loadFileBytes missing file fails") && passed;
+        passed = expectTrue(!missingLoadResult.error.empty(), "BinaryDocument::loadFileBytes missing file has error") && passed;
+
+        BinXray::Core::BinaryDocument unchangedDocument = {};
+        unchangedDocument.replace(std::vector<std::uint8_t>{0x11, 0x22}, std::wstring(L"in-memory"));
+        passed = expectTrue(!unchangedDocument.loadFromFile(missingPath), "BinaryDocument::loadFromFile missing file fails") && passed;
+        passed = expectEqual(unchangedDocument.bytes(), std::vector<std::uint8_t>{0x11, 0x22}, "BinaryDocument::loadFromFile missing file preserves bytes") && passed;
+        passed = expectEqual(unchangedDocument.sourcePath(), std::wstring(L"in-memory"), "BinaryDocument::loadFromFile missing file preserves path") && passed;
+    }
+
+    const std::wstring emptyPath = createTempFilePath();
+    passed = expectTrue(!emptyPath.empty(), "createTempFilePath(empty)") && passed;
+    if (!emptyPath.empty()) {
+        passed = expectTrue(writeFile(emptyPath, {}), "writeFile(empty)") && passed;
+        const BinXray::Core::BinaryLoadResult emptyLoadResult = BinXray::Core::BinaryDocument::loadFileBytes(emptyPath);
+        passed = expectTrue(emptyLoadResult.success, "BinaryDocument::loadFileBytes empty file success") && passed;
+        passed = expectEqual(emptyLoadResult.path, emptyPath, "BinaryDocument::loadFileBytes empty file path") && passed;
+        passed = expectTrue(emptyLoadResult.bytes.empty(), "BinaryDocument::loadFileBytes empty file bytes empty") && passed;
+        ::DeleteFileW(emptyPath.c_str());
+    }
 
     const std::wstring tempPath = createTempFilePath();
     passed = expectTrue(!tempPath.empty(), "createTempFilePath") && passed;

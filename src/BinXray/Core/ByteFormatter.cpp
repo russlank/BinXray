@@ -16,7 +16,8 @@ std::string formatByteHex(const std::uint8_t value) {
 }
 
 std::string formatOffsetHex(const std::size_t offset) {
-    char buffer[11] = {};
+    constexpr std::size_t kMaxDigits = sizeof(std::size_t) * 2;
+    char buffer[2 + kMaxDigits + 1] = {};
     std::snprintf(buffer, sizeof(buffer), "0x%08zX", offset);
     return std::string(buffer);
 }
