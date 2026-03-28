@@ -37,6 +37,8 @@ The solution currently runs six suites from `BinXray.Tests`:
    - Enable seeking, hover matrix, click-to-freeze/unfreeze, navigate via address list.
    - Toggle 3D mode, rotate/auto-rotate, and verify seek UI remains 2D-only.
    - Switch between grayscale and heat map; validate visual responsiveness.
+   - Shrink window width aggressively and verify hex + address panels remain usable.
+   - Click matrix/ribbon margin areas and verify no unintended freeze/select/scrub.
 
 ## Recommended Next Quality Additions
 

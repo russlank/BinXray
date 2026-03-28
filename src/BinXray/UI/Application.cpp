@@ -341,10 +341,21 @@ LRESULT Application::handleWindowMessage(HWND hWnd, UINT message, WPARAM wParam,
 
     switch (message) {
     case WM_SIZE:
-        if (m_device != nullptr && m_swapChain != nullptr && wParam != SIZE_MINIMIZED) {
+        if (m_device != nullptr &&
+            m_swapChain != nullptr &&
+            wParam != SIZE_MINIMIZED &&
+            LOWORD(lParam) > 0 &&
+            HIWORD(lParam) > 0) {
             cleanupRenderTarget();
-            m_swapChain->ResizeBuffers(0, static_cast<UINT>(LOWORD(lParam)), static_cast<UINT>(HIWORD(lParam)), DXGI_FORMAT_UNKNOWN, 0);
-            createRenderTarget();
+            const HRESULT hr = m_swapChain->ResizeBuffers(
+                0,
+                static_cast<UINT>(LOWORD(lParam)),
+                static_cast<UINT>(HIWORD(lParam)),
+                DXGI_FORMAT_UNKNOWN,
+                0);
+            if (SUCCEEDED(hr)) {
+                createRenderTarget();
+            }
         }
         return 0;
     case WM_SYSCOMMAND:
@@ -390,10 +401,15 @@ void Application::startAsyncFileLoad(const std::wstring& path) {
     m_isLoadingFile = true;
     m_loadingPath = path;
     m_lastLoadError.clear();
-
-    m_asyncLoadFuture = std::async(std::launch::async, [path]() {
-        return Core::BinaryDocument::loadFileBytes(path);
-    });
+    try {
+        m_asyncLoadFuture = std::async(std::launch::async, [path]() {
+            return Core::BinaryDocument::loadFileBytes(path);
+        });
+    } catch (...) {
+        m_isLoadingFile = false;
+        m_loadingPath.clear();
+        m_lastLoadError = L"Failed to start async file loading task.";
+    }
 }
 
 void Application::pollAsyncFileLoad() {
@@ -891,18 +907,24 @@ void Application::drawMatrixPlot() {
 
     // Plot area starts after the margins (space reserved for coordinate labels).
     const ImVec2 origin(canvasOrigin.x + marginLeft, canvasOrigin.y + marginTop);
+    const ImVec2 mousePos = ImGui::GetMousePos();
+    const bool mouseInPlotArea =
+        mousePos.x >= origin.x &&
+        mousePos.x < (origin.x + plotSize) &&
+        mousePos.y >= origin.y &&
+        mousePos.y < (origin.y + plotSize);
 
     const bool isHovered = ImGui::IsItemHovered();
 
     // Handle click-to-freeze / click-to-unfreeze toggle.
-    if (m_seek.seekEnabled && isHovered && ImGui::IsMouseClicked(ImGuiMouseButton_Left)) {
+    if (m_seek.seekEnabled && mouseInPlotArea && ImGui::IsMouseClicked(ImGuiMouseButton_Left)) {
         m_seek.frozen = !m_seek.frozen;
     }
 
     // Live-update seek when hovering and not frozen.
-    if (isHovered) {
+    if (mouseInPlotArea) {
         updateSeekFromPlot(origin.x, origin.y, plotSize);
-    } else if (!m_seek.frozen) {
+    } else if (!m_seek.frozen && !isHovered) {
         m_seek.valid = false;
         m_seek.result = {};
     }
@@ -1287,11 +1309,16 @@ void Application::drawCenterColumn() {
 
     const bool showAddresses = seekOffsets != nullptr;
 
-    if (showAddresses) {
+    constexpr float kHexMinPaneWidth = 220.0F;
+    constexpr float kAddrMinPaneWidth = 110.0F;
+    const float fullWidth = ImGui::GetContentRegionAvail().x;
+    const bool canSplitHexAndAddresses =
+        showAddresses && fullWidth >= (kHexMinPaneWidth + kAddrMinPaneWidth + ImGui::GetStyle().ItemSpacing.x);
+
+    if (canSplitHexAndAddresses) {
         const float spacing   = ImGui::GetStyle().ItemSpacing.x;
-        const float fullWidth = ImGui::GetContentRegionAvail().x;
         const float addrWidth = Constants::kSeekAddressPanelWidth;
-        const float hexWidth  = fullWidth - addrWidth - spacing;
+        const float hexWidth  = std::max(kHexMinPaneWidth, fullWidth - addrWidth - spacing);
 
         ImGui::BeginChild("HexView", ImVec2(hexWidth, 0.0F), true);
         ImGui::TextUnformatted("Hex View");
@@ -1321,6 +1348,15 @@ void Application::drawCenterColumn() {
             m_transitionMatrix.endOffset(),
             seekOffsets, m_seekScrollTarget);
         m_seekScrollTarget.reset();
+
+        // In narrow layouts keep addresses visible, but stack below the hex view.
+        if (showAddresses) {
+            ImGui::Spacing();
+            ImGui::Separator();
+            ImGui::TextUnformatted("Addresses");
+            drawSeekAddressList();
+        }
+
         ImGui::EndChild();
     }
 }
@@ -1333,7 +1369,7 @@ void Application::drawRibbonColumn() {
     }
 
     const std::size_t ribbonWidth = static_cast<std::size_t>(m_ribbonWidth);
-    const std::size_t rowCount = (bytes.size() + ribbonWidth - 1) / ribbonWidth;
+    const std::size_t rowCount = ((bytes.size() - 1) / ribbonWidth) + 1;
     const float widthAvailable = ImGui::GetContentRegionAvail().x;
 
     // Reserve margins for cursor triangles and coordinate labels.
@@ -1523,6 +1559,19 @@ void Application::drawWorkspace() {
         rightWidth -= (deficit - leftReduction);
         rightWidth  = std::max(Constants::kRightColumnHardMin, rightWidth);
         centerWidth = totalWidth - leftWidth - rightWidth - (2.0F * spacing);
+    }
+
+    // Final guard for very narrow windows: keep all widths non-negative.
+    if (centerWidth < 64.0F) {
+        const float minCenter = std::max(0.0F, std::min(64.0F, totalWidth - (2.0F * spacing)));
+        const float sideBudget = std::max(0.0F, totalWidth - minCenter - (2.0F * spacing));
+        const float sideSum = leftWidth + rightWidth;
+        if (sideSum > 0.0F && sideBudget < sideSum) {
+            const float scale = sideBudget / sideSum;
+            leftWidth *= scale;
+            rightWidth *= scale;
+        }
+        centerWidth = std::max(0.0F, totalWidth - leftWidth - rightWidth - (2.0F * spacing));
     }
 
     ImGui::BeginChild("LeftControls", ImVec2(leftWidth, 0.0F), true);

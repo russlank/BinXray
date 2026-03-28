@@ -136,6 +136,14 @@ when the application is idle.
 3D mode is active.  In 2D mode, only the transition matrix is recomputed,
 which reduces scrub latency and avoids unnecessary 64 MB worker-buffer churn.
 
+### Narrow-Layout Safety and Hit-Testing Guards
+The centre column now falls back to stacked hex/address rendering when width
+is insufficient for side-by-side panes.  The workspace column allocation
+includes a final non-negative-width guard for very narrow windows.
+Additionally, matrix and ribbon interactions only trigger from their actual
+pixel areas (not surrounding margin zones), preventing accidental
+freeze/scrub/select actions.
+
 ## Test Strategy
 
 - `BinXray.Tests` runs six suites: `ByteFormatterTests`,
