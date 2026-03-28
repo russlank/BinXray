@@ -15,9 +15,11 @@ At its core, the tool renders a **byte-pair scatterplot** — a 256×256 matrix 
 
 A companion **3D byte-trigram scatter plot** extends the analysis into three dimensions: every consecutive triplet of bytes becomes a point in a 256³ cube, revealing higher-order structural patterns that are invisible in the 2D matrix.
 
-## Screenshots / Demos
+## Screenshots
 
 ![Bin X-Ray – 3D trigram scatter plot](doc/images/screenshot-06.png)
+
+## Videos / Demo
 
 [![Watch the Demo video](doc/images/screenshot-04.png)](https://www.youtube.com/watch?v=EDPa4owmucA)
 
