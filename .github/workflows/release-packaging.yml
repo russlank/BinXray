@@ -14,9 +14,6 @@ jobs:
     runs-on: windows-latest
 
     env:
-      # Opt into Node.js 24 for all JavaScript actions ahead of the June 2026 forced migration.
-      # Remove once all actions used here ship native Node.js 24 support.
-      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
       # Update these toolchain pins when the runner image changes or when a dependency upgrade
       # is required. Keep WiX major version aligned with packaging/build-packages.ps1 checks.
       DOTNET_VERSION: "9.0.x"
@@ -36,18 +33,31 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Setup MSBuild
-        uses: microsoft/setup-msbuild@v2
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $vswhere = Join-Path ${env:ProgramFiles(x86)} "Microsoft Visual Studio\Installer\vswhere.exe"
+          if (-not (Test-Path $vswhere)) {
+            throw "vswhere.exe not found at '$vswhere'."
+          }
+          $msbuildPath = & $vswhere -latest -requires Microsoft.Component.MSBuild -find "MSBuild\**\Bin\MSBuild.exe" | Select-Object -First 1
+          if (-not $msbuildPath) {
+            throw "MSBuild.exe not found via vswhere."
+          }
+          $msbuildDir = Split-Path -Path $msbuildPath -Parent
+          $msbuildDir | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+          Write-Host "MSBuild path: $msbuildPath"
 
       - name: Setup .NET
-        uses: actions/setup-dotnet@v4
+        uses: actions/setup-dotnet@v5
         with:
           dotnet-version: ${{ env.DOTNET_VERSION }}
 
       - name: Setup Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: ${{ env.PYTHON_VERSION }}
 
@@ -239,7 +249,7 @@ jobs:
 
       # Upload is unchanged for signed/unsigned mode. Artifact filenames remain stable.
       - name: Upload Packaging Artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: binxray-packages-${{ steps.version.outputs.app_version }}
           path: artifacts/release/*
@@ -248,8 +258,23 @@ jobs:
       # run is manually attached/published through another process.
       - name: Publish GitHub Release Assets
         if: startsWith(github.ref, 'refs/tags/')
-        uses: softprops/action-gh-release@v2
-        with:
-          files: |
-            artifacts/release/*.exe
-            artifacts/release/*.msi
+        shell: pwsh
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          $ErrorActionPreference = "Stop"
+          $tag = "${{ github.ref_name }}"
+          $assets = @(
+            "artifacts/release/*.exe",
+            "artifacts/release/*.msi"
+          )
+
+          gh release view $tag *> $null
+          if ($LASTEXITCODE -eq 0) {
+            Write-Host "Release '$tag' already exists. Uploading assets with --clobber."
+            gh release upload $tag $assets --clobber
+          }
+          else {
+            Write-Host "Creating release '$tag' and uploading assets."
+            gh release create $tag $assets --verify-tag --generate-notes
+          }
