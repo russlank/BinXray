@@ -8,7 +8,7 @@ It complements `run-guide.md` (how to build/run) and `architecture.md`
 
 ## Automated Test Suites
 
-The solution currently runs six suites from `BinXray.Tests`:
+The solution currently runs seven suites from `BinXray.Tests`:
 
 - `ByteFormatterTests`
 - `BinaryDocumentTests`
@@ -16,6 +16,7 @@ The solution currently runs six suites from `BinXray.Tests`:
 - `TransitionSeekerTests`
 - `TrigramPlotTests`
 - `CrosshairCoordsTests`
+- `UILayoutLogicTests`
 
 ### What They Cover
 
@@ -39,6 +40,8 @@ The solution currently runs six suites from `BinXray.Tests`:
    - Switch between grayscale and heat map; validate visual responsiveness.
    - Shrink window width aggressively and verify hex + address panels remain usable.
    - Click matrix/ribbon margin areas and verify no unintended freeze/select/scrub.
+
+For a step-by-step checklist, use `manual-ui-smoke-test.md`.
 
 ## Recommended Next Quality Additions
 

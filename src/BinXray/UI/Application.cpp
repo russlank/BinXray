@@ -7,6 +7,7 @@
 #include "Application.h"
 
 #include "Core/CrosshairCoords.h"
+#include "UILayoutLogic.h"
 #include "UIConstants.h"
 #include "Version.h"
 #include "resource.h"
@@ -908,11 +909,10 @@ void Application::drawMatrixPlot() {
     // Plot area starts after the margins (space reserved for coordinate labels).
     const ImVec2 origin(canvasOrigin.x + marginLeft, canvasOrigin.y + marginTop);
     const ImVec2 mousePos = ImGui::GetMousePos();
-    const bool mouseInPlotArea =
-        mousePos.x >= origin.x &&
-        mousePos.x < (origin.x + plotSize) &&
-        mousePos.y >= origin.y &&
-        mousePos.y < (origin.y + plotSize);
+    const bool mouseInPlotArea = Layout::containsPoint(
+        mousePos.x, mousePos.y,
+        origin.x, origin.y,
+        plotSize, plotSize);
 
     const bool isHovered = ImGui::IsItemHovered();
 
@@ -1304,7 +1304,11 @@ void Application::drawCenterColumn() {
     ImGui::Spacing();
 
     const std::vector<std::size_t>* seekOffsets =
-        (!m_3dModeEnabled && m_seek.seekEnabled && m_seek.valid && !m_seek.result.offsets.empty())
+        Layout::shouldShowSeekOffsets(
+            m_3dModeEnabled,
+            m_seek.seekEnabled,
+            m_seek.valid,
+            m_seek.result.offsets.size())
             ? &m_seek.result.offsets : nullptr;
 
     const bool showAddresses = seekOffsets != nullptr;
@@ -1313,7 +1317,11 @@ void Application::drawCenterColumn() {
     constexpr float kAddrMinPaneWidth = 110.0F;
     const float fullWidth = ImGui::GetContentRegionAvail().x;
     const bool canSplitHexAndAddresses =
-        showAddresses && fullWidth >= (kHexMinPaneWidth + kAddrMinPaneWidth + ImGui::GetStyle().ItemSpacing.x);
+        showAddresses && Layout::canSplitHexAndAddresses(
+            fullWidth,
+            ImGui::GetStyle().ItemSpacing.x,
+            kHexMinPaneWidth,
+            kAddrMinPaneWidth);
 
     if (canSplitHexAndAddresses) {
         const float spacing   = ImGui::GetStyle().ItemSpacing.x;
@@ -1369,7 +1377,7 @@ void Application::drawRibbonColumn() {
     }
 
     const std::size_t ribbonWidth = static_cast<std::size_t>(m_ribbonWidth);
-    const std::size_t rowCount = ((bytes.size() - 1) / ribbonWidth) + 1;
+    const std::size_t rowCount = Layout::computeRibbonRowCount(bytes.size(), ribbonWidth);
     const float widthAvailable = ImGui::GetContentRegionAvail().x;
 
     // Reserve margins for cursor triangles and coordinate labels.
@@ -1397,11 +1405,10 @@ void Application::drawRibbonColumn() {
     const ImVec2 contentOrigin = ImGui::GetCursorScreenPos();
     ImGui::InvisibleButton("RibbonCanvas", ImVec2(totalWidth, contentHeight));
     const ImVec2 mousePos = ImGui::GetMousePos();
-    const bool mouseInPixelArea =
-        mousePos.x >= (contentOrigin.x + leftMargin) &&
-        mousePos.x <  (contentOrigin.x + leftMargin + contentWidth) &&
-        mousePos.y >= contentOrigin.y &&
-        mousePos.y <  (contentOrigin.y + contentHeight);
+    const bool mouseInPixelArea = Layout::containsPoint(
+        mousePos.x, mousePos.y,
+        contentOrigin.x + leftMargin, contentOrigin.y,
+        contentWidth, contentHeight);
 
     // Pixel area starts after the left margin.
     const float pixelOriginX = contentOrigin.x + leftMargin;
@@ -1548,31 +1555,22 @@ void Application::drawWorkspace() {
 
     const float spacing     = ImGui::GetStyle().ItemSpacing.x;
     const float totalWidth  = ImGui::GetContentRegionAvail().x;
-    float leftWidth   = std::clamp(totalWidth * Constants::kLeftColumnRatio,  Constants::kLeftColumnMin,  Constants::kLeftColumnMax);
-    float rightWidth  = std::clamp(totalWidth * Constants::kRightColumnRatio, Constants::kRightColumnMin, Constants::kRightColumnMax);
-    float centerWidth = totalWidth - leftWidth - rightWidth - (2.0F * spacing);
-
-    if (centerWidth < Constants::kCenterColumnMin) {
-        const float deficit       = Constants::kCenterColumnMin - centerWidth;
-        const float leftReduction = std::min(deficit * 0.5F, std::max(0.0F, leftWidth - Constants::kLeftColumnHardMin));
-        leftWidth  -= leftReduction;
-        rightWidth -= (deficit - leftReduction);
-        rightWidth  = std::max(Constants::kRightColumnHardMin, rightWidth);
-        centerWidth = totalWidth - leftWidth - rightWidth - (2.0F * spacing);
-    }
-
-    // Final guard for very narrow windows: keep all widths non-negative.
-    if (centerWidth < 64.0F) {
-        const float minCenter = std::max(0.0F, std::min(64.0F, totalWidth - (2.0F * spacing)));
-        const float sideBudget = std::max(0.0F, totalWidth - minCenter - (2.0F * spacing));
-        const float sideSum = leftWidth + rightWidth;
-        if (sideSum > 0.0F && sideBudget < sideSum) {
-            const float scale = sideBudget / sideSum;
-            leftWidth *= scale;
-            rightWidth *= scale;
-        }
-        centerWidth = std::max(0.0F, totalWidth - leftWidth - rightWidth - (2.0F * spacing));
-    }
+    constexpr Layout::WorkspacePolicy kWorkspacePolicy{
+        Constants::kLeftColumnRatio,
+        Constants::kLeftColumnMin,
+        Constants::kLeftColumnMax,
+        Constants::kRightColumnRatio,
+        Constants::kRightColumnMin,
+        Constants::kRightColumnMax,
+        Constants::kCenterColumnMin,
+        Constants::kLeftColumnHardMin,
+        Constants::kRightColumnHardMin,
+        64.0F};
+    const Layout::WorkspaceWidths widths = Layout::computeWorkspaceWidths(
+        totalWidth, spacing, kWorkspacePolicy);
+    const float leftWidth = widths.left;
+    const float centerWidth = widths.center;
+    const float rightWidth = widths.right;
 
     ImGui::BeginChild("LeftControls", ImVec2(leftWidth, 0.0F), true);
     drawControlsColumn();

@@ -146,9 +146,9 @@ freeze/scrub/select actions.
 
 ## Test Strategy
 
-- `BinXray.Tests` runs six suites: `ByteFormatterTests`,
+- `BinXray.Tests` runs seven suites: `ByteFormatterTests`,
   `BinaryDocumentTests`, `TransitionMatrixTests`, `TransitionSeekerTests`,
-  `TrigramPlotTests`, `CrosshairCoordsTests`.
+  `TrigramPlotTests`, `CrosshairCoordsTests`, `UILayoutLogicTests`.
 - Edge cases covered: missing/empty file loads, single byte, sub-ranges,
   boundary clamping, maxResults capping, self-transitions, inverted
   ranges, repeated trigram accumulation, mapIntensity modes, crosshair

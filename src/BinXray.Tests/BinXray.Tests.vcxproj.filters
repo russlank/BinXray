@@ -24,6 +24,9 @@
     <ClCompile Include="CrosshairCoordsTests.cpp">
       <Filter>Tests</Filter>
     </ClCompile>
+    <ClCompile Include="UILayoutLogicTests.cpp">
+      <Filter>Tests</Filter>
+    </ClCompile>
     <ClCompile Include="..\BinXray\Core\ByteFormatter.cpp">
       <Filter>Shared</Filter>
     </ClCompile>

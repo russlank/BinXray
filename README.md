@@ -58,7 +58,7 @@ A companion **3D byte-trigram scatter plot** extends the analysis into three dim
 - **Event-driven idle rendering**: when nothing is animating or loading, the main loop sleeps via `MsgWaitForMultipleObjects`, dropping CPU/GPU utilisation to near-zero.
 
 ### Testing
-- Six automated test suites: `ByteFormatterTests`, `BinaryDocumentTests`, `TransitionMatrixTests`, `TransitionSeekerTests`, `TrigramPlotTests`, `CrosshairCoordsTests`.
+- Seven automated test suites: `ByteFormatterTests`, `BinaryDocumentTests`, `TransitionMatrixTests`, `TransitionSeekerTests`, `TrigramPlotTests`, `CrosshairCoordsTests`, `UILayoutLogicTests`.
 - Edge cases covered: empty/missing files, single byte, sub-ranges, boundary clamping, maxResults capping, self-transitions, inverted ranges, repeated trigram accumulation, mapIntensity modes, crosshair coordinate semantics, opacity-alpha validation.
 
 ## Requirements

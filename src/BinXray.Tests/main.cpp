@@ -14,6 +14,7 @@ bool runTransitionMatrixTests();
 bool runTransitionSeekerTests();
 bool runTrigramPlotTests();
 bool runCrosshairCoordsTests();
+bool runUILayoutLogicTests();
 
 int main() {
     int failedSuites = 0;
@@ -39,6 +40,10 @@ int main() {
     }
 
     if (!runCrosshairCoordsTests()) {
+        ++failedSuites;
+    }
+
+    if (!runUILayoutLogicTests()) {
         ++failedSuites;
     }
 
