@@ -132,6 +132,7 @@
     <ClCompile Include="TransitionSeekerTests.cpp" />
     <ClCompile Include="TrigramPlotTests.cpp" />
     <ClCompile Include="CrosshairCoordsTests.cpp" />
+    <ClCompile Include="UILayoutLogicTests.cpp" />
     <ClCompile Include="..\BinXray\Core\ByteFormatter.cpp" />
     <ClCompile Include="..\BinXray\Core\BinaryDocument.cpp" />
     <ClCompile Include="..\BinXray\Core\TransitionMatrix.cpp" />

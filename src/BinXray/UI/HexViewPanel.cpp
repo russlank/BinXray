@@ -105,6 +105,8 @@ void HexViewPanel::drawContent(const Core::BinaryDocument& document,
 
                 char hexBuf[3];
                 std::snprintf(hexBuf, sizeof(hexBuf), "%02X", static_cast<unsigned int>(byteVal));
+                char buttonLabel[32];
+                std::snprintf(buttonLabel, sizeof(buttonLabel), "%s##%zu", hexBuf, index);
 
                 if (isSelected) {
                     ImGui::PushStyleColor(ImGuiCol_Button,        Constants::kHexSelectedColor);
@@ -114,11 +116,9 @@ void HexViewPanel::drawContent(const Core::BinaryDocument& document,
                     ImGui::PushStyleColor(ImGuiCol_ButtonHovered, Constants::kHexSeekHighlightHovered);
                 }
 
-                ImGui::PushID(static_cast<int>(index));
-                if (ImGui::SmallButton(hexBuf)) {
+                if (ImGui::SmallButton(buttonLabel)) {
                     selectedOffset = index;
                 }
-                ImGui::PopID();
 
                 if (isSelected || isSeekHit) {
                     ImGui::PopStyleColor(2);

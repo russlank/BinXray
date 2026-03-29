@@ -124,7 +124,7 @@ constexpr float kMatrixPlotMarginTop  = 20.0F;
 /// Space reserved on left/right of the pixel area for cursor triangles and
 /// coordinate labels, ensuring they do not overlap rendered pixels.
 constexpr float kRibbonLeftMargin  = 10.0F;
-constexpr float kRibbonRightMargin = 70.0F;
+constexpr float kRibbonRightMargin = 100.0F;
 
 // ── 3D Trigram plot ───────────────────────────────────────────────────────────
 /// Interactive 3D byte-trigram scatter plot rendered via ImDrawList projection.

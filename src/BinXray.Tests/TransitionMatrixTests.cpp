@@ -36,6 +36,15 @@ bool expectEqual(std::uint8_t actual, std::uint8_t expected, const char* caseNam
     return false;
 }
 
+bool expectEqual(std::size_t actual, std::size_t expected, const char* caseName) {
+    if (actual == expected) {
+        return true;
+    }
+
+    std::cout << "[FAIL] " << caseName << " expected=" << expected << " actual=" << actual << std::endl;
+    return false;
+}
+
 std::size_t toIndex(std::uint8_t from, std::uint8_t to) {
     return static_cast<std::size_t>(from) * BinXray::Core::TransitionMatrix::kDimension + static_cast<std::size_t>(to);
 }
@@ -87,6 +96,19 @@ bool runTransitionMatrixTests() {
         BinXray::Core::TransitionMatrix::Luminance buffer = {};
         matrix->renderLuminance(BinXray::Core::TransitionMatrix::RenderMode::Linear, buffer);
         passed = expectEqual(buffer[toIndex(0xAA, 0xAA)], static_cast<std::uint8_t>(255), "linear clamp density>255") && passed;
+    }
+
+    {
+        const std::vector<std::uint8_t> bytes = {0x01, 0x02, 0x03};
+        auto matrix = std::make_unique<BinXray::Core::TransitionMatrix>();
+        matrix->compute(bytes, 0, 999);
+        passed = expectEqual(matrix->startOffset(), static_cast<std::size_t>(0), "overshoot range clamped start") && passed;
+        passed = expectEqual(matrix->endOffset(), bytes.size(), "overshoot range clamped end") && passed;
+        passed = expectEqual(matrix->count(0x01, 0x02), 1, "overshoot range count 0x01->0x02") && passed;
+
+        matrix->compute(bytes, 2, 1);
+        passed = expectEqual(matrix->maxCount(), static_cast<std::uint32_t>(0), "inverted range maxCount zero") && passed;
+        passed = expectEqual(matrix->count(0x01, 0x02), static_cast<std::uint32_t>(0), "inverted range has no counts") && passed;
     }
 
     if (passed) {

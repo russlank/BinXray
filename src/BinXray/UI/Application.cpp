@@ -7,6 +7,7 @@
 #include "Application.h"
 
 #include "Core/CrosshairCoords.h"
+#include "UILayoutLogic.h"
 #include "UIConstants.h"
 #include "Version.h"
 #include "resource.h"
@@ -104,6 +105,10 @@ Application::Application()
       m_hWnd(nullptr),
       m_running(false),
       m_initialized(false),
+      m_windowClassRegistered(false),
+      m_imguiContextCreated(false),
+      m_imguiWin32Initialized(false),
+      m_imguiDx11Initialized(false),
       m_swapChain(nullptr),
       m_device(nullptr),
       m_deviceContext(nullptr),
@@ -164,7 +169,11 @@ bool Application::initialize(HINSTANCE hInstance) {
         hInstance, MAKEINTRESOURCEW(IDI_APPICON), IMAGE_ICON, 32, 32, LR_DEFAULTCOLOR));
     wc.hIconSm = static_cast<HICON>(::LoadImageW(
         hInstance, MAKEINTRESOURCEW(IDI_APPICON), IMAGE_ICON, 16, 16, LR_DEFAULTCOLOR));
-    ::RegisterClassExW(&wc);
+    if (::RegisterClassExW(&wc) == 0) {
+        g_applicationInstance = nullptr;
+        return false;
+    }
+    m_windowClassRegistered = true;
 
     std::wstring windowTitle = L"Bin X-ray v";
     windowTitle += BXR_VERSION_WSTRING;
@@ -198,13 +207,16 @@ bool Application::initialize(HINSTANCE hInstance) {
 
     if (m_hWnd == nullptr) {
         ::UnregisterClassW(wc.lpszClassName, wc.hInstance);
+        m_windowClassRegistered = false;
         g_applicationInstance = nullptr;
         return false;
     }
 
     if (!createDeviceD3D(m_hWnd)) {
         ::DestroyWindow(m_hWnd);
+        m_hWnd = nullptr;
         ::UnregisterClassW(wc.lpszClassName, wc.hInstance);
+        m_windowClassRegistered = false;
         g_applicationInstance = nullptr;
         return false;
     }
@@ -214,15 +226,22 @@ bool Application::initialize(HINSTANCE hInstance) {
 
     IMGUI_CHECKVERSION();
     ImGui::CreateContext();
+    m_imguiContextCreated = true;
     ImGuiIO& io = ImGui::GetIO();
     io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
 
     ImGui::StyleColorsDark();
 
-    if (!ImGui_ImplWin32_Init(m_hWnd) || !ImGui_ImplDX11_Init(m_device, m_deviceContext)) {
+    if (!ImGui_ImplWin32_Init(m_hWnd)) {
         shutdown();
         return false;
     }
+    m_imguiWin32Initialized = true;
+    if (!ImGui_ImplDX11_Init(m_device, m_deviceContext)) {
+        shutdown();
+        return false;
+    }
+    m_imguiDx11Initialized = true;
 
     m_document.loadSampleData();
     m_selectedOffset = 0;
@@ -262,7 +281,11 @@ int Application::run() {
 }
 
 void Application::shutdown() {
-    if (!m_initialized && m_hWnd == nullptr && m_device == nullptr) {
+    if (!m_initialized &&
+        m_hWnd == nullptr &&
+        m_device == nullptr &&
+        !m_imguiContextCreated &&
+        !m_windowClassRegistered) {
         return;
     }
 
@@ -274,9 +297,18 @@ void Application::shutdown() {
         m_asyncLoadFuture = {};
     }
 
-    ImGui_ImplDX11_Shutdown();
-    ImGui_ImplWin32_Shutdown();
-    ImGui::DestroyContext();
+    if (m_imguiDx11Initialized) {
+        ImGui_ImplDX11_Shutdown();
+        m_imguiDx11Initialized = false;
+    }
+    if (m_imguiWin32Initialized) {
+        ImGui_ImplWin32_Shutdown();
+        m_imguiWin32Initialized = false;
+    }
+    if (m_imguiContextCreated && ImGui::GetCurrentContext() != nullptr) {
+        ImGui::DestroyContext();
+    }
+    m_imguiContextCreated = false;
 
     cleanupDeviceD3D();
 
@@ -285,10 +317,11 @@ void Application::shutdown() {
         m_hWnd = nullptr;
     }
 
-    if (m_hInstance != nullptr) {
+    if (m_windowClassRegistered && m_hInstance != nullptr) {
         ::UnregisterClassW(kWindowClass, m_hInstance);
-        m_hInstance = nullptr;
+        m_windowClassRegistered = false;
     }
+    m_hInstance = nullptr;
 
     g_applicationInstance = nullptr;
     m_initialized = false;
@@ -309,10 +342,21 @@ LRESULT Application::handleWindowMessage(HWND hWnd, UINT message, WPARAM wParam,
 
     switch (message) {
     case WM_SIZE:
-        if (m_device != nullptr && wParam != SIZE_MINIMIZED) {
+        if (m_device != nullptr &&
+            m_swapChain != nullptr &&
+            wParam != SIZE_MINIMIZED &&
+            LOWORD(lParam) > 0 &&
+            HIWORD(lParam) > 0) {
             cleanupRenderTarget();
-            m_swapChain->ResizeBuffers(0, static_cast<UINT>(LOWORD(lParam)), static_cast<UINT>(HIWORD(lParam)), DXGI_FORMAT_UNKNOWN, 0);
-            createRenderTarget();
+            const HRESULT hr = m_swapChain->ResizeBuffers(
+                0,
+                static_cast<UINT>(LOWORD(lParam)),
+                static_cast<UINT>(HIWORD(lParam)),
+                DXGI_FORMAT_UNKNOWN,
+                0);
+            if (SUCCEEDED(hr)) {
+                createRenderTarget();
+            }
         }
         return 0;
     case WM_SYSCOMMAND:
@@ -358,10 +402,15 @@ void Application::startAsyncFileLoad(const std::wstring& path) {
     m_isLoadingFile = true;
     m_loadingPath = path;
     m_lastLoadError.clear();
-
-    m_asyncLoadFuture = std::async(std::launch::async, [path]() {
-        return Core::BinaryDocument::loadFileBytes(path);
-    });
+    try {
+        m_asyncLoadFuture = std::async(std::launch::async, [path]() {
+            return Core::BinaryDocument::loadFileBytes(path);
+        });
+    } catch (...) {
+        m_isLoadingFile = false;
+        m_loadingPath.clear();
+        m_lastLoadError = L"Failed to start async file loading task.";
+    }
 }
 
 void Application::pollAsyncFileLoad() {
@@ -464,10 +513,29 @@ void Application::rebuildMatrixIfDirty() {
         : (m_normalizeEnabled ? Core::TransitionMatrix::RenderMode::Normalized : Core::TransitionMatrix::RenderMode::Linear);
     m_transitionMatrix.renderLuminance(mode, m_matrixLuminance);
 
-    // Also recompute the trigram plot (shares the same data range).
-    m_trigramPlot.compute(bytes, start, end);
+    // The trigram plot is expensive to recompute and only needed in 3D mode.
+    if (m_3dModeEnabled) {
+        m_trigramPlot.compute(bytes, start, end);
+    }
+
+    // Keep seek offsets/counts consistent with the active matrix range.
+    refreshSeekResult();
 
     m_matrixDirty = false;
+}
+
+void Application::refreshSeekResult() {
+    if (!m_seek.seekEnabled || !m_seek.valid) {
+        return;
+    }
+
+    m_seek.result = Core::findTransitionOffsets(
+        m_document.bytes(),
+        m_transitionMatrix.startOffset(),
+        m_transitionMatrix.endOffset(),
+        m_seek.fromByte,
+        m_seek.toByte,
+        Constants::kSeekMaxAddresses);
 }
 
 void Application::invalidateSeek() {
@@ -609,6 +677,7 @@ bool Application::createDeviceD3D(HWND hWnd) {
         &m_deviceContext);
 
     if (result != S_OK) {
+        cleanupDeviceD3D();
         return false;
     }
 
@@ -636,10 +705,20 @@ void Application::cleanupDeviceD3D() {
 }
 
 void Application::createRenderTarget() {
+    if (m_swapChain == nullptr || m_device == nullptr) {
+        return;
+    }
+
     ID3D11Texture2D* backBuffer = nullptr;
-    m_swapChain->GetBuffer(0, IID_PPV_ARGS(&backBuffer));
-    m_device->CreateRenderTargetView(backBuffer, nullptr, &m_mainRenderTargetView);
+    if (FAILED(m_swapChain->GetBuffer(0, IID_PPV_ARGS(&backBuffer))) || backBuffer == nullptr) {
+        return;
+    }
+
+    const HRESULT hr = m_device->CreateRenderTargetView(backBuffer, nullptr, &m_mainRenderTargetView);
     backBuffer->Release();
+    if (FAILED(hr)) {
+        m_mainRenderTargetView = nullptr;
+    }
 }
 
 void Application::cleanupRenderTarget() {
@@ -679,6 +758,13 @@ void Application::drawControlsColumn() {
 
     if (ImGui::Checkbox("3D Mode", &m_3dModeEnabled)) {
         m_matrixDirty = true;
+        if (m_3dModeEnabled) {
+            // Seeking is a 2D-only feature; clear stale seek UI state when
+            // switching into 3D mode.
+            m_seek.frozen = false;
+            m_seek.valid = false;
+            m_seek.result = {};
+        }
     }
 
     controlsChanged = ImGui::Checkbox("Full View", &m_fullViewEnabled) || controlsChanged;
@@ -822,18 +908,23 @@ void Application::drawMatrixPlot() {
 
     // Plot area starts after the margins (space reserved for coordinate labels).
     const ImVec2 origin(canvasOrigin.x + marginLeft, canvasOrigin.y + marginTop);
+    const ImVec2 mousePos = ImGui::GetMousePos();
+    const bool mouseInPlotArea = Layout::containsPoint(
+        mousePos.x, mousePos.y,
+        origin.x, origin.y,
+        plotSize, plotSize);
 
     const bool isHovered = ImGui::IsItemHovered();
 
     // Handle click-to-freeze / click-to-unfreeze toggle.
-    if (m_seek.seekEnabled && isHovered && ImGui::IsMouseClicked(ImGuiMouseButton_Left)) {
+    if (m_seek.seekEnabled && mouseInPlotArea && ImGui::IsMouseClicked(ImGuiMouseButton_Left)) {
         m_seek.frozen = !m_seek.frozen;
     }
 
     // Live-update seek when hovering and not frozen.
-    if (isHovered) {
+    if (mouseInPlotArea) {
         updateSeekFromPlot(origin.x, origin.y, plotSize);
-    } else if (!m_seek.frozen) {
+    } else if (!m_seek.frozen && !isHovered) {
         m_seek.valid = false;
         m_seek.result = {};
     }
@@ -1213,16 +1304,29 @@ void Application::drawCenterColumn() {
     ImGui::Spacing();
 
     const std::vector<std::size_t>* seekOffsets =
-        (m_seek.seekEnabled && m_seek.valid && !m_seek.result.offsets.empty())
+        Layout::shouldShowSeekOffsets(
+            m_3dModeEnabled,
+            m_seek.seekEnabled,
+            m_seek.valid,
+            m_seek.result.offsets.size())
             ? &m_seek.result.offsets : nullptr;
 
     const bool showAddresses = seekOffsets != nullptr;
 
-    if (showAddresses) {
+    constexpr float kHexMinPaneWidth = 220.0F;
+    constexpr float kAddrMinPaneWidth = 110.0F;
+    const float fullWidth = ImGui::GetContentRegionAvail().x;
+    const bool canSplitHexAndAddresses =
+        showAddresses && Layout::canSplitHexAndAddresses(
+            fullWidth,
+            ImGui::GetStyle().ItemSpacing.x,
+            kHexMinPaneWidth,
+            kAddrMinPaneWidth);
+
+    if (canSplitHexAndAddresses) {
         const float spacing   = ImGui::GetStyle().ItemSpacing.x;
-        const float fullWidth = ImGui::GetContentRegionAvail().x;
         const float addrWidth = Constants::kSeekAddressPanelWidth;
-        const float hexWidth  = fullWidth - addrWidth - spacing;
+        const float hexWidth  = std::max(kHexMinPaneWidth, fullWidth - addrWidth - spacing);
 
         ImGui::BeginChild("HexView", ImVec2(hexWidth, 0.0F), true);
         ImGui::TextUnformatted("Hex View");
@@ -1252,6 +1356,15 @@ void Application::drawCenterColumn() {
             m_transitionMatrix.endOffset(),
             seekOffsets, m_seekScrollTarget);
         m_seekScrollTarget.reset();
+
+        // In narrow layouts keep addresses visible, but stack below the hex view.
+        if (showAddresses) {
+            ImGui::Spacing();
+            ImGui::Separator();
+            ImGui::TextUnformatted("Addresses");
+            drawSeekAddressList();
+        }
+
         ImGui::EndChild();
     }
 }
@@ -1264,7 +1377,7 @@ void Application::drawRibbonColumn() {
     }
 
     const std::size_t ribbonWidth = static_cast<std::size_t>(m_ribbonWidth);
-    const std::size_t rowCount = (bytes.size() + ribbonWidth - 1) / ribbonWidth;
+    const std::size_t rowCount = Layout::computeRibbonRowCount(bytes.size(), ribbonWidth);
     const float widthAvailable = ImGui::GetContentRegionAvail().x;
 
     // Reserve margins for cursor triangles and coordinate labels.
@@ -1291,6 +1404,11 @@ void Application::drawRibbonColumn() {
     ImGui::BeginChild("RibbonScroll", ImVec2(0.0F, 0.0F), true, ImGuiWindowFlags_HorizontalScrollbar);
     const ImVec2 contentOrigin = ImGui::GetCursorScreenPos();
     ImGui::InvisibleButton("RibbonCanvas", ImVec2(totalWidth, contentHeight));
+    const ImVec2 mousePos = ImGui::GetMousePos();
+    const bool mouseInPixelArea = Layout::containsPoint(
+        mousePos.x, mousePos.y,
+        contentOrigin.x + leftMargin, contentOrigin.y,
+        contentWidth, contentHeight);
 
     // Pixel area starts after the left margin.
     const float pixelOriginX = contentOrigin.x + leftMargin;
@@ -1336,7 +1454,7 @@ void Application::drawRibbonColumn() {
     }
 
     // Handle click on ribbon to select byte offset and scroll hex view.
-    if (ImGui::IsItemHovered() && ImGui::IsMouseClicked(ImGuiMouseButton_Left)) {
+    if (ImGui::IsItemHovered() && mouseInPixelArea && ImGui::IsMouseClicked(ImGuiMouseButton_Left)) {
         const float localX = std::clamp(ImGui::GetMousePos().x - pixelOriginX, 0.0F, contentWidth - 1.0F);
         const float localY = std::clamp(ImGui::GetMousePos().y - contentOrigin.y, 0.0F, contentHeight - 1.0F);
         const auto clickCol = static_cast<std::size_t>(localX / pixelScale);
@@ -1349,7 +1467,7 @@ void Application::drawRibbonColumn() {
     }
 
     // Handle drag on ribbon to scrub the analysis window (non-Full-View mode).
-    if (!m_fullViewEnabled && ImGui::IsItemHovered() && ImGui::IsMouseDown(ImGuiMouseButton_Left)) {
+    if (!m_fullViewEnabled && ImGui::IsItemHovered() && mouseInPixelArea && ImGui::IsMouseDown(ImGuiMouseButton_Left)) {
         const float localY = std::clamp(ImGui::GetMousePos().y - contentOrigin.y, 0.0F, contentHeight - 1.0F);
         const float normalizedY = (contentHeight <= 1.0F) ? 0.0F : (localY / contentHeight);
         const std::size_t centerOffset = static_cast<std::size_t>(normalizedY * static_cast<float>(bytes.size() - 1));
@@ -1437,18 +1555,22 @@ void Application::drawWorkspace() {
 
     const float spacing     = ImGui::GetStyle().ItemSpacing.x;
     const float totalWidth  = ImGui::GetContentRegionAvail().x;
-    float leftWidth   = std::clamp(totalWidth * Constants::kLeftColumnRatio,  Constants::kLeftColumnMin,  Constants::kLeftColumnMax);
-    float rightWidth  = std::clamp(totalWidth * Constants::kRightColumnRatio, Constants::kRightColumnMin, Constants::kRightColumnMax);
-    float centerWidth = totalWidth - leftWidth - rightWidth - (2.0F * spacing);
-
-    if (centerWidth < Constants::kCenterColumnMin) {
-        const float deficit       = Constants::kCenterColumnMin - centerWidth;
-        const float leftReduction = std::min(deficit * 0.5F, std::max(0.0F, leftWidth - Constants::kLeftColumnHardMin));
-        leftWidth  -= leftReduction;
-        rightWidth -= (deficit - leftReduction);
-        rightWidth  = std::max(Constants::kRightColumnHardMin, rightWidth);
-        centerWidth = totalWidth - leftWidth - rightWidth - (2.0F * spacing);
-    }
+    constexpr Layout::WorkspacePolicy kWorkspacePolicy{
+        Constants::kLeftColumnRatio,
+        Constants::kLeftColumnMin,
+        Constants::kLeftColumnMax,
+        Constants::kRightColumnRatio,
+        Constants::kRightColumnMin,
+        Constants::kRightColumnMax,
+        Constants::kCenterColumnMin,
+        Constants::kLeftColumnHardMin,
+        Constants::kRightColumnHardMin,
+        64.0F};
+    const Layout::WorkspaceWidths widths = Layout::computeWorkspaceWidths(
+        totalWidth, spacing, kWorkspacePolicy);
+    const float leftWidth = widths.left;
+    const float centerWidth = widths.center;
+    const float rightWidth = widths.right;
 
     ImGui::BeginChild("LeftControls", ImVec2(leftWidth, 0.0F), true);
     drawControlsColumn();
@@ -1497,6 +1619,13 @@ void Application::renderFrame() {
     drawWorkspace();
 
     ImGui::Render();
+
+    if (m_mainRenderTargetView == nullptr) {
+        createRenderTarget();
+        if (m_mainRenderTargetView == nullptr) {
+            return;
+        }
+    }
 
     m_deviceContext->OMSetRenderTargets(1, &m_mainRenderTargetView, nullptr);
     m_deviceContext->ClearRenderTargetView(m_mainRenderTargetView, Constants::kClearColor);

@@ -95,7 +95,8 @@ requirements.txt
 /artifacts/**/*
 /src/XpressFormula/imgui.ini
 
-.ai/**/*
-**/*/.ai/**/*
-# !.ai/template-solution/
-# !.ai/template-solution/**
+# **/*/.ai/
+# .ai/**/*
+# **/*/.ai/**/*
+
+/.ai/

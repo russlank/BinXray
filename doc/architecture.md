@@ -131,15 +131,28 @@ recomputation is active, the loop calls
 input or paint message.  This drops CPU and GPU utilisation to near-zero
 when the application is idle.
 
+### 3D-Mode-Gated Trigram Recompute
+`Application::rebuildMatrixIfDirty()` computes the trigram cube only when
+3D mode is active.  In 2D mode, only the transition matrix is recomputed,
+which reduces scrub latency and avoids unnecessary 64 MB worker-buffer churn.
+
+### Narrow-Layout Safety and Hit-Testing Guards
+The centre column now falls back to stacked hex/address rendering when width
+is insufficient for side-by-side panes.  The workspace column allocation
+includes a final non-negative-width guard for very narrow windows.
+Additionally, matrix and ribbon interactions only trigger from their actual
+pixel areas (not surrounding margin zones), preventing accidental
+freeze/scrub/select actions.
+
 ## Test Strategy
 
-- `BinXray.Tests` runs five suites: `ByteFormatterTests`,
+- `BinXray.Tests` runs seven suites: `ByteFormatterTests`,
   `BinaryDocumentTests`, `TransitionMatrixTests`, `TransitionSeekerTests`,
-  `TrigramPlotTests`.
-- Edge cases covered: empty data, single byte, sub-ranges, boundary
-  clamping, maxResults capping, self-transitions, inverted ranges,
-  repeated trigram accumulation, mapIntensity modes, opacity-alpha
-  scaling validation.
+  `TrigramPlotTests`, `CrosshairCoordsTests`, `UILayoutLogicTests`.
+- Edge cases covered: missing/empty file loads, single byte, sub-ranges,
+  boundary clamping, maxResults capping, self-transitions, inverted
+  ranges, repeated trigram accumulation, mapIntensity modes, crosshair
+  coordinate semantics, opacity-alpha scaling validation.
 - Process exit code reflects suite pass/fail for CI gating.
 
 ## Planned Evolution

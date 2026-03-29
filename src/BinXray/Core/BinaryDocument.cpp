@@ -6,6 +6,7 @@
 #include "BinaryDocument.h"
 
 #include <fstream>
+#include <limits>
 #include <utility>
 #include <vector>
 
@@ -28,12 +29,19 @@ BinaryLoadResult BinaryDocument::loadFileBytes(const std::wstring& path) {
         result.error = L"Unable to determine file size.";
         return result;
     }
+    if (static_cast<unsigned long long>(fileSize) >
+        static_cast<unsigned long long>(std::numeric_limits<std::size_t>::max())) {
+        result.error = L"File is too large to load into memory.";
+        return result;
+    }
     file.seekg(0, std::ios::beg);
 
-    if (fileSize > 0) {
-        result.bytes.resize(static_cast<std::size_t>(fileSize));
-        file.read(reinterpret_cast<char*>(result.bytes.data()), fileSize);
-        if (static_cast<std::streamoff>(file.gcount()) != fileSize) {
+    const std::size_t byteCount = static_cast<std::size_t>(fileSize);
+    if (byteCount > 0) {
+        result.bytes.resize(byteCount);
+        file.read(reinterpret_cast<char*>(result.bytes.data()),
+                  static_cast<std::streamsize>(byteCount));
+        if (!file || static_cast<std::size_t>(file.gcount()) != byteCount) {
             result.bytes.clear();
             result.error = L"I/O error while reading file.";
             return result;
