@@ -21,7 +21,7 @@ A companion **3D byte-trigram scatter plot** extends the analysis into three dim
 
 ## Videos / Demo
 
-[![Watch the Demo video](doc/images/screenshot-04.png)](https://www.youtube.com/watch?v=EDPa4owmucA)
+[![Watch the Demo video](doc/images/screenshot-07.png)](https://www.youtube.com/watch?v=EDPa4owmucA)
 
 ## What Bin X-ray Is Great For
 
