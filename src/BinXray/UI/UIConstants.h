@@ -125,6 +125,11 @@ constexpr float kMatrixPlotMarginTop  = 20.0F;
 /// coordinate labels, ensuring they do not overlap rendered pixels.
 constexpr float kRibbonLeftMargin  = 10.0F;
 constexpr float kRibbonRightMargin = 100.0F;
+/// Draggable top/bottom edge handles for the active analysis window overlay.
+constexpr ImU32  kRibbonWindowHandleColor        = IM_COL32(255, 220, 70, 210);
+constexpr ImU32  kRibbonWindowHandleHoverColor   = IM_COL32(255, 240, 140, 240);
+constexpr float  kRibbonWindowHandleThickness    = 2.0F;
+constexpr float  kRibbonWindowHandleHitHalfHeight = 4.0F;
 
 // ── 3D Trigram plot ───────────────────────────────────────────────────────────
 /// Interactive 3D byte-trigram scatter plot rendered via ImDrawList projection.

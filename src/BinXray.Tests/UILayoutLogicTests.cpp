@@ -34,6 +34,16 @@ bool expectSize(std::size_t actual, std::size_t expected, const char* caseName) 
     return false;
 }
 
+bool expectInt(int actual, int expected, const char* caseName) {
+    if (actual == expected) {
+        return true;
+    }
+    std::cout << "[FAIL] " << caseName
+              << " expected=" << expected
+              << " actual=" << actual << std::endl;
+    return false;
+}
+
 bool expectNear(float actual, float expected, float eps, const char* caseName) {
     if (std::fabs(actual - expected) <= eps) {
         return true;
@@ -129,6 +139,132 @@ bool runUILayoutLogicTests() {
         passed = expectFalse(shouldShowSeekOffsets(false, false, true, 1), "seek hidden: feature disabled") && passed;
         passed = expectFalse(shouldShowSeekOffsets(false, true, false, 1), "seek hidden: invalid") && passed;
         passed = expectFalse(shouldShowSeekOffsets(false, true, true, 0), "seek hidden: no offsets") && passed;
+    }
+
+    // 8) Window-edge resize helper.
+    {
+        // Drag start edge upward (earlier offset) within valid range.
+        auto range = resizeWindowRangeFromEdge(1000, 200, 600, 150, true, 2);
+        passed = expectSize(range.startInclusive, 150, "resize start: moved upward") && passed;
+        passed = expectSize(range.endExclusive, 600, "resize start: end unchanged") && passed;
+
+        // Drag start edge too far down: clamp to preserve min window.
+        range = resizeWindowRangeFromEdge(1000, 200, 600, 999, true, 2);
+        passed = expectSize(range.startInclusive, 598, "resize start: clamped by min window") && passed;
+        passed = expectSize(range.endExclusive, 600, "resize start: clamped end unchanged") && passed;
+
+        // Drag end edge down (later offset) within file.
+        range = resizeWindowRangeFromEdge(1000, 200, 600, 750, false, 2);
+        passed = expectSize(range.startInclusive, 200, "resize end: start unchanged") && passed;
+        passed = expectSize(range.endExclusive, 751, "resize end: moved downward") && passed;
+
+        // Drag end edge above start: clamp to preserve min window.
+        range = resizeWindowRangeFromEdge(1000, 200, 600, 50, false, 2);
+        passed = expectSize(range.startInclusive, 200, "resize end: start unchanged on clamp") && passed;
+        passed = expectSize(range.endExclusive, 202, "resize end: clamped by min window") && passed;
+
+        // File-size edge case.
+        range = resizeWindowRangeFromEdge(0, 0, 0, 0, true, 2);
+        passed = expectSize(range.startInclusive, 0, "resize empty: start zero") && passed;
+        passed = expectSize(range.endExclusive, 0, "resize empty: end zero") && passed;
+
+        // Inverted input range normalizes before resize.
+        range = resizeWindowRangeFromEdge(100, 80, 20, 30, true, 4);
+        passed = expectSize(range.startInclusive, 30, "resize inverted: normalized start updates from cursor") && passed;
+        passed = expectSize(range.endExclusive, 80, "resize inverted: normalized end preserved") && passed;
+
+        // Cursor beyond file clamps to last valid byte.
+        range = resizeWindowRangeFromEdge(64, 10, 20, 9999, false, 2);
+        passed = expectSize(range.startInclusive, 10, "resize cursor clamp: start unchanged") && passed;
+        passed = expectSize(range.endExclusive, 64, "resize cursor clamp: end clamped to file") && passed;
+
+        // minWindow greater than file size expands to full file.
+        range = resizeWindowRangeFromEdge(8, 3, 5, 0, false, 1024);
+        passed = expectSize(range.startInclusive, 0, "resize min-window>file: start clamped to zero") && passed;
+        passed = expectSize(range.endExclusive, 8, "resize min-window>file: full file range") && passed;
+    }
+
+    // 9) Step-adjust clamp helper.
+    {
+        passed = expectInt(adjustByStepClamped(10, 2, 4, 1, 50), 18, "step-clamp: positive delta") && passed;
+        passed = expectInt(adjustByStepClamped(10, -3, 4, 1, 50), 1, "step-clamp: lower bound clamp") && passed;
+        passed = expectInt(adjustByStepClamped(10, 1000, 1000, 1, 100), 100, "step-clamp: upper bound clamp") && passed;
+        passed = expectInt(adjustByStepClamped(10, 0, 4, 1, 50), 10, "step-clamp: zero stepCount") && passed;
+        passed = expectInt(adjustByStepClamped(10, 2, 0, 1, 50), 10, "step-clamp: non-positive step size guarded") && passed;
+        passed = expectInt(adjustByStepClamped(10, 2, 4, 50, 1), 18, "step-clamp: invalid range normalized") && passed;
+    }
+
+    // 10) Ribbon modifier-wheel routing helper.
+    {
+        // No Ctrl: no action/consume.
+        auto wheel = applyRibbonModifierWheel(
+            false, false, 1,
+            100, 128,
+            2, 4096, 256,
+            4, 1024, 64);
+        passed = expectFalse(wheel.consumed, "ribbon-wheel: no ctrl not consumed") && passed;
+        passed = expectTrue(wheel.action == RibbonModifierWheelAction::None, "ribbon-wheel: no ctrl action none") && passed;
+        passed = expectInt(wheel.blockSize, 100, "ribbon-wheel: no ctrl block unchanged") && passed;
+        passed = expectInt(wheel.ribbonWidth, 128, "ribbon-wheel: no ctrl width unchanged") && passed;
+
+        // Ctrl only: block size changes.
+        wheel = applyRibbonModifierWheel(
+            true, false, 2,
+            100, 128,
+            2, 4096, 256,
+            4, 1024, 64);
+        passed = expectTrue(wheel.consumed, "ribbon-wheel: ctrl consumed") && passed;
+        passed = expectTrue(wheel.action == RibbonModifierWheelAction::BlockSize, "ribbon-wheel: ctrl action block") && passed;
+        passed = expectInt(wheel.blockSize, 612, "ribbon-wheel: ctrl block updated") && passed;
+        passed = expectInt(wheel.ribbonWidth, 128, "ribbon-wheel: ctrl width unchanged") && passed;
+
+        // Ctrl+Shift: ribbon width changes, block preserved.
+        wheel = applyRibbonModifierWheel(
+            true, true, -3,
+            600, 256,
+            2, 4096, 256,
+            4, 1024, 64);
+        passed = expectTrue(wheel.consumed, "ribbon-wheel: ctrl+shift consumed") && passed;
+        passed = expectTrue(wheel.action == RibbonModifierWheelAction::RibbonWidth, "ribbon-wheel: ctrl+shift action width") && passed;
+        passed = expectInt(wheel.blockSize, 600, "ribbon-wheel: ctrl+shift block unchanged") && passed;
+        passed = expectInt(wheel.ribbonWidth, 64, "ribbon-wheel: ctrl+shift width updated") && passed;
+
+        // Ctrl+Shift width clamps at min/max.
+        wheel = applyRibbonModifierWheel(
+            true, true, 1000,
+            600, 900,
+            2, 4096, 256,
+            4, 1024, 64);
+        passed = expectTrue(wheel.consumed, "ribbon-wheel: ctrl+shift upper clamp still consumed") && passed;
+        passed = expectInt(wheel.ribbonWidth, 1024, "ribbon-wheel: ctrl+shift width upper clamp") && passed;
+
+        // Ctrl at lower bound remains clamped but stays consumed.
+        wheel = applyRibbonModifierWheel(
+            true, false, -1000,
+            2, 128,
+            2, 4096, 256,
+            4, 1024, 64);
+        passed = expectTrue(wheel.consumed, "ribbon-wheel: ctrl lower clamp still consumed") && passed;
+        passed = expectTrue(wheel.action == RibbonModifierWheelAction::BlockSize, "ribbon-wheel: ctrl lower clamp action block") && passed;
+        passed = expectInt(wheel.blockSize, 2, "ribbon-wheel: ctrl lower clamp at min") && passed;
+
+        // Ctrl with zero wheel still no-op.
+        wheel = applyRibbonModifierWheel(
+            true, false, 0,
+            400, 256,
+            2, 4096, 256,
+            4, 1024, 64);
+        passed = expectFalse(wheel.consumed, "ribbon-wheel: zero wheel not consumed") && passed;
+        passed = expectTrue(wheel.action == RibbonModifierWheelAction::None, "ribbon-wheel: zero wheel action none") && passed;
+
+        // Reversed bounds are normalized internally.
+        wheel = applyRibbonModifierWheel(
+            true, false, 1,
+            400, 256,
+            4096, 2, 256,
+            1024, 4, 64);
+        passed = expectTrue(wheel.action == RibbonModifierWheelAction::BlockSize, "ribbon-wheel: reversed bounds still block action") && passed;
+        passed = expectInt(wheel.blockSize, 656, "ribbon-wheel: reversed block bounds normalized") && passed;
     }
 
     if (passed) {

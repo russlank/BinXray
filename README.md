@@ -67,6 +67,10 @@ A companion **3D byte-trigram scatter plot** extends the analysis into three dim
 ### Navigation & Inspection
 - Async `Open File` flow for large binaries.
 - **Bitmap ribbon navigation**: click any pixel to jump to that byte offset; red pointer triangles and a coordinate label mark the current position. Drag to scrub the analysis range.
+- **Draggable window edges**: when `Full View` is off, drag the highlighted ribbon window's upper/lower edges to resize block length directly; edge drag capture suppresses accidental scrub while resizing.
+- **Mouse gauges for sizing**: use dedicated gauges under `Block Size` and `Ribbon Width` in the left panel for quick visual adjustment.
+- **Wheel-assisted sizing**: use the mouse wheel over `Block Size` / `Ribbon Width` controls, or over ribbon window edges, to nudge size quickly (`Shift` = larger step).
+- **Ribbon shortcut sizing**: hold `Ctrl` and use the mouse wheel over the ribbon to change `Block Size`; hold `Ctrl+Shift` to change `Ribbon Width`.
 - **Ribbon adaptive scaling**: fractional pixel scaling when the ribbon width exceeds panel space.
 - Virtualised hex view (ImGuiListClipper) with seek highlighting and programmatic scroll-to support.
 - **ASCII column highlighting**: per-character colouring matches hex byte highlight state.
@@ -82,7 +86,7 @@ A companion **3D byte-trigram scatter plot** extends the analysis into three dim
 
 ### Testing
 - Seven automated test suites: `ByteFormatterTests`, `BinaryDocumentTests`, `TransitionMatrixTests`, `TransitionSeekerTests`, `TrigramPlotTests`, `CrosshairCoordsTests`, `UILayoutLogicTests`.
-- Edge cases covered: empty/missing files, single byte, sub-ranges, boundary clamping, maxResults capping, self-transitions, inverted ranges, repeated trigram accumulation, mapIntensity modes, crosshair coordinate semantics, opacity-alpha validation.
+- Edge cases covered: empty/missing files, single byte, sub-ranges, boundary clamping, maxResults capping, self-transitions, inverted ranges, repeated trigram accumulation, mapIntensity modes, crosshair coordinate semantics, opacity-alpha validation, ribbon window-edge resize clamping, and modifier-wheel routing/clamping.
 
 ## Product Direction (High-Value Next Steps)
 

@@ -23,6 +23,7 @@
 #include <commdlg.h>
 #include <d3d11.h>
 #include <dxgi.h>
+#include <limits>
 #include <utility>
 
 extern IMGUI_IMPL_API LRESULT ImGui_ImplWin32_WndProcHandler(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam);
@@ -73,6 +74,18 @@ const ImU32* getHeatMapLUT() {
         built = true;
     }
     return lut;
+}
+
+/// Convert ImGui wheel delta into a signed number of adjustment steps.
+/// Fractional touchpad deltas still map to one step for responsive controls.
+int wheelToStepCount(float wheelDelta) {
+    if (wheelDelta > 0.0F) {
+        return std::max(1, static_cast<int>(std::ceil(wheelDelta)));
+    }
+    if (wheelDelta < 0.0F) {
+        return -std::max(1, static_cast<int>(std::ceil(-wheelDelta)));
+    }
+    return 0;
 }
 
 }
@@ -132,6 +145,7 @@ Application::Application()
       m_hexViewPanel(),
       m_seek(),
       m_seekScrollTarget(),
+      m_ribbonEdgeDragMode(RibbonEdgeDragMode::None),
       m_trigramPlot(),
       m_3dYaw(Constants::k3DPlotDefaultYaw),
       m_3dPitch(Constants::k3DPlotDefaultPitch),
@@ -439,6 +453,7 @@ void Application::pollAsyncFileLoad() {
 }
 
 void Application::refreshRangeAfterDocumentChange() {
+    m_ribbonEdgeDragMode = RibbonEdgeDragMode::None;
     const std::size_t fileSize = m_document.bytes().size();
     if (fileSize == 0) {
         m_windowStartOffset = 0;
@@ -730,6 +745,12 @@ void Application::cleanupRenderTarget() {
 
 void Application::drawControlsColumn() {
     bool controlsChanged = false;
+    const auto& bytes = m_document.bytes();
+    const int maxBlockByFile = bytes.empty()
+        ? std::numeric_limits<int>::max()
+        : static_cast<int>(std::min<std::size_t>(
+            bytes.size(),
+            static_cast<std::size_t>(std::numeric_limits<int>::max())));
 
     if (ImGui::Button("Open File", ImVec2(-1.0F, 0.0F)) && !m_isLoadingFile) {
         const std::optional<std::wstring> selectedPath = promptOpenFilePath();
@@ -768,14 +789,73 @@ void Application::drawControlsColumn() {
     }
 
     controlsChanged = ImGui::Checkbox("Full View", &m_fullViewEnabled) || controlsChanged;
+    bool blockSizeControlHovered = false;
     if (ImGui::InputInt("Block Size", &m_blockSize, Constants::kBlockSizeStep, Constants::kBlockSizeFastStep)) {
         m_blockSize = std::max(Constants::kBlockSizeMin, m_blockSize);
         controlsChanged = true;
     }
+    blockSizeControlHovered = blockSizeControlHovered || ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled);
+    if (!bytes.empty()) {
+        const int blockGaugeMax = std::max(Constants::kBlockSizeMin, maxBlockByFile);
+        int blockGaugeValue = std::clamp(m_blockSize, Constants::kBlockSizeMin, blockGaugeMax);
+        ImGui::SetNextItemWidth(-1.0F);
+        if (ImGui::SliderInt("##BlockSizeGauge", &blockGaugeValue,
+                             Constants::kBlockSizeMin, blockGaugeMax,
+                             "Block Size Gauge: %d bytes")) {
+            m_blockSize = blockGaugeValue;
+            controlsChanged = true;
+        }
+        blockSizeControlHovered = blockSizeControlHovered || ImGui::IsItemHovered();
+    } else {
+        ImGui::BeginDisabled();
+        int disabledBlockGauge = m_blockSize;
+        ImGui::SetNextItemWidth(-1.0F);
+        ImGui::SliderInt("##BlockSizeGauge", &disabledBlockGauge,
+                         Constants::kBlockSizeMin,
+                         std::max(Constants::kBlockSizeDefault, Constants::kBlockSizeMin + 1),
+                         "Block Size Gauge");
+        ImGui::EndDisabled();
+        blockSizeControlHovered = blockSizeControlHovered || ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled);
+    }
+    if (blockSizeControlHovered) {
+        const int wheelSteps = wheelToStepCount(ImGui::GetIO().MouseWheel);
+        if (wheelSteps != 0) {
+            const int wheelStepSize = ImGui::GetIO().KeyShift
+                ? Constants::kBlockSizeFastStep
+                : Constants::kBlockSizeStep;
+            const long long proposed = static_cast<long long>(m_blockSize) +
+                static_cast<long long>(wheelSteps) * static_cast<long long>(wheelStepSize);
+            m_blockSize = static_cast<int>(std::clamp<long long>(
+                proposed,
+                static_cast<long long>(Constants::kBlockSizeMin),
+                static_cast<long long>(std::max(Constants::kBlockSizeMin, maxBlockByFile))));
+            controlsChanged = true;
+        }
+    }
 
     ImGui::Separator();
+    bool ribbonWidthControlHovered = false;
     if (ImGui::InputInt("Ribbon Width", &m_ribbonWidth, Constants::kRibbonWidthStep, Constants::kRibbonWidthFastStep)) {
         m_ribbonWidth = std::clamp(m_ribbonWidth, Constants::kRibbonWidthMin, Constants::kRibbonWidthMax);
+    }
+    ribbonWidthControlHovered = ribbonWidthControlHovered || ImGui::IsItemHovered();
+    int ribbonGaugeValue = std::clamp(m_ribbonWidth, Constants::kRibbonWidthMin, Constants::kRibbonWidthMax);
+    ImGui::SetNextItemWidth(-1.0F);
+    if (ImGui::SliderInt("##RibbonWidthGauge", &ribbonGaugeValue,
+                         Constants::kRibbonWidthMin, Constants::kRibbonWidthMax,
+                         "Ribbon Width Gauge: %d")) {
+        m_ribbonWidth = ribbonGaugeValue;
+    }
+    ribbonWidthControlHovered = ribbonWidthControlHovered || ImGui::IsItemHovered();
+    if (ribbonWidthControlHovered) {
+        const int wheelSteps = wheelToStepCount(ImGui::GetIO().MouseWheel);
+        if (wheelSteps != 0) {
+            const int wheelStepSize = ImGui::GetIO().KeyShift
+                ? Constants::kRibbonWidthFastStep
+                : Constants::kRibbonWidthStep;
+            const int proposed = m_ribbonWidth + (wheelSteps * wheelStepSize);
+            m_ribbonWidth = std::clamp(proposed, Constants::kRibbonWidthMin, Constants::kRibbonWidthMax);
+        }
     }
 
     // 3D auto-rotation controls (only visible in 3D mode).
@@ -852,7 +932,6 @@ void Application::drawControlsColumn() {
         refreshRangeAfterDocumentChange();
     }
 
-    const auto& bytes = m_document.bytes();
     ImGui::Separator();
     ImGui::TextColored(Constants::kControlsLabelColor, "Bytes:");
     ImGui::SameLine();
@@ -1404,6 +1483,7 @@ void Application::drawRibbonColumn() {
     ImGui::BeginChild("RibbonScroll", ImVec2(0.0F, 0.0F), true, ImGuiWindowFlags_HorizontalScrollbar);
     const ImVec2 contentOrigin = ImGui::GetCursorScreenPos();
     ImGui::InvisibleButton("RibbonCanvas", ImVec2(totalWidth, contentHeight));
+    const bool canvasHovered = ImGui::IsItemHovered();
     const ImVec2 mousePos = ImGui::GetMousePos();
     const bool mouseInPixelArea = Layout::containsPoint(
         mousePos.x, mousePos.y,
@@ -1435,7 +1515,13 @@ void Application::drawRibbonColumn() {
         }
     }
 
-    if (m_transitionMatrix.endOffset() > m_transitionMatrix.startOffset()) {
+    const ImGuiIO& io = ImGui::GetIO();
+    const bool hasActiveRange = m_transitionMatrix.endOffset() > m_transitionMatrix.startOffset();
+    bool suppressCanvasActions = false;
+    if (m_fullViewEnabled || !hasActiveRange) {
+        m_ribbonEdgeDragMode = RibbonEdgeDragMode::None;
+    }
+    if (hasActiveRange) {
         const std::size_t startRow = m_transitionMatrix.startOffset() / ribbonWidth;
         const std::size_t endRow   = (m_transitionMatrix.endOffset() - 1) / ribbonWidth;
         const float markerY0 = contentOrigin.y + static_cast<float>(startRow) * pixelScale;
@@ -1451,10 +1537,173 @@ void Application::drawRibbonColumn() {
             0.0F,
             0,
             2.0F);
+
+        // In non-Full-View mode, allow dragging the top/bottom window edges.
+        if (!m_fullViewEnabled) {
+            const float hitHalf = std::max(Constants::kRibbonWindowHandleHitHalfHeight, pixelScale * 0.5F);
+            const bool mouseInHorizontalWindow =
+                mousePos.x >= pixelOriginX &&
+                mousePos.x < (pixelOriginX + contentWidth);
+            const float topDistance = std::fabs(mousePos.y - markerY0);
+            const float bottomDistance = std::fabs(mousePos.y - markerY1);
+            const bool topHit = mouseInHorizontalWindow && topDistance <= hitHalf;
+            const bool bottomHit = mouseInHorizontalWindow && bottomDistance <= hitHalf;
+            const RibbonEdgeDragMode hoveredEdge =
+                (topHit && bottomHit)
+                    ? ((topDistance <= bottomDistance) ? RibbonEdgeDragMode::Top : RibbonEdgeDragMode::Bottom)
+                    : (topHit ? RibbonEdgeDragMode::Top : (bottomHit ? RibbonEdgeDragMode::Bottom : RibbonEdgeDragMode::None));
+
+            if (m_ribbonEdgeDragMode == RibbonEdgeDragMode::None &&
+                canvasHovered &&
+                ImGui::IsMouseClicked(ImGuiMouseButton_Left) &&
+                hoveredEdge != RibbonEdgeDragMode::None) {
+                m_ribbonEdgeDragMode = hoveredEdge;
+            }
+
+            if (m_ribbonEdgeDragMode != RibbonEdgeDragMode::None &&
+                !ImGui::IsMouseDown(ImGuiMouseButton_Left)) {
+                m_ribbonEdgeDragMode = RibbonEdgeDragMode::None;
+            }
+
+            const RibbonEdgeDragMode activeEdge =
+                (m_ribbonEdgeDragMode != RibbonEdgeDragMode::None) ? m_ribbonEdgeDragMode : hoveredEdge;
+            const bool edgeHoveredOrActive = activeEdge != RibbonEdgeDragMode::None;
+            if (edgeHoveredOrActive) {
+                ImGui::SetMouseCursor(ImGuiMouseCursor_ResizeNS);
+                suppressCanvasActions = true;
+            }
+
+            const bool topActive = activeEdge == RibbonEdgeDragMode::Top;
+            const bool bottomActive = activeEdge == RibbonEdgeDragMode::Bottom;
+            const ImU32 topColor = topActive
+                ? Constants::kRibbonWindowHandleHoverColor
+                : Constants::kRibbonWindowHandleColor;
+            const ImU32 bottomColor = bottomActive
+                ? Constants::kRibbonWindowHandleHoverColor
+                : Constants::kRibbonWindowHandleColor;
+            drawList->AddLine(
+                ImVec2(pixelOriginX, markerY0),
+                ImVec2(pixelOriginX + contentWidth, markerY0),
+                topColor,
+                Constants::kRibbonWindowHandleThickness);
+            drawList->AddLine(
+                ImVec2(pixelOriginX, markerY1),
+                ImVec2(pixelOriginX + contentWidth, markerY1),
+                bottomColor,
+                Constants::kRibbonWindowHandleThickness);
+
+            auto applyEdgeResize = [&](std::size_t cursorOffset, bool dragStartEdge) {
+                const Layout::WindowRange resized = Layout::resizeWindowRangeFromEdge(
+                    bytes.size(),
+                    m_windowStartOffset,
+                    m_windowEndOffset,
+                    cursorOffset,
+                    dragStartEdge,
+                    static_cast<std::size_t>(Constants::kBlockSizeMin));
+
+                if (resized.startInclusive != m_windowStartOffset ||
+                    resized.endExclusive != m_windowEndOffset) {
+                    m_windowStartOffset = resized.startInclusive;
+                    m_windowEndOffset = resized.endExclusive;
+                    m_blockSize = static_cast<int>(std::min<std::size_t>(
+                        resized.endExclusive - resized.startInclusive,
+                        static_cast<std::size_t>(std::numeric_limits<int>::max())));
+                    m_blockSize = std::max(m_blockSize, Constants::kBlockSizeMin);
+                    m_matrixDirty = true;
+                }
+            };
+
+            if (!bytes.empty() &&
+                m_ribbonEdgeDragMode != RibbonEdgeDragMode::None &&
+                ImGui::IsMouseDown(ImGuiMouseButton_Left)) {
+                const float localY = std::clamp(mousePos.y - contentOrigin.y, 0.0F, contentHeight - 1.0F);
+                const float normY = (contentHeight <= 1.0F) ? 0.0F : (localY / (contentHeight - 1.0F));
+                const std::size_t cursorOffset = static_cast<std::size_t>(
+                    std::clamp(normY * static_cast<float>(bytes.size() - 1),
+                               0.0F,
+                               static_cast<float>(bytes.size() - 1)));
+                applyEdgeResize(cursorOffset, m_ribbonEdgeDragMode == RibbonEdgeDragMode::Top);
+            }
+
+            const int wheelSteps = wheelToStepCount(io.MouseWheel);
+            if (!bytes.empty() &&
+                wheelSteps != 0 &&
+                !io.KeyCtrl &&
+                canvasHovered &&
+                mouseInPixelArea &&
+                edgeHoveredOrActive) {
+                const bool dragStartEdge = activeEdge == RibbonEdgeDragMode::Top;
+                const std::size_t currentEdgeOffset = dragStartEdge
+                    ? m_windowStartOffset
+                    : ((m_windowEndOffset > 0) ? (m_windowEndOffset - 1) : 0);
+                const std::size_t wheelStepBytes = std::max<std::size_t>(
+                    1,
+                    static_cast<std::size_t>(io.KeyShift ? (m_ribbonWidth * 4) : m_ribbonWidth));
+                const long long cursorDelta = static_cast<long long>(wheelSteps) *
+                    static_cast<long long>(wheelStepBytes);
+                const long long minOffset = 0;
+                const long long maxOffset = static_cast<long long>(bytes.size() - 1);
+                const long long targetOffset = std::clamp<long long>(
+                    static_cast<long long>(currentEdgeOffset) - cursorDelta,
+                    minOffset,
+                    maxOffset);
+                applyEdgeResize(static_cast<std::size_t>(targetOffset), dragStartEdge);
+                suppressCanvasActions = true;
+                ImGui::SetScrollY(scrollY);
+            }
+        }
+    }
+
+    // Ctrl-modified wheel on the ribbon adjusts sizing directly:
+    // - Ctrl + Wheel        => Block Size
+    // - Ctrl + Shift + Wheel => Ribbon Width
+    const int ribbonWheelSteps = wheelToStepCount(io.MouseWheel);
+    if (!bytes.empty() &&
+        ribbonWheelSteps != 0 &&
+        canvasHovered &&
+        mouseInPixelArea) {
+        const int maxBlockByFile = static_cast<int>(std::min<std::size_t>(
+            bytes.size(),
+            static_cast<std::size_t>(std::numeric_limits<int>::max())));
+        const Layout::RibbonModifierWheelResult wheelResult = Layout::applyRibbonModifierWheel(
+            io.KeyCtrl,
+            io.KeyShift,
+            ribbonWheelSteps,
+            m_blockSize,
+            m_ribbonWidth,
+            Constants::kBlockSizeMin,
+            std::max(Constants::kBlockSizeMin, maxBlockByFile),
+            Constants::kBlockSizeStep,
+            Constants::kRibbonWidthMin,
+            Constants::kRibbonWidthMax,
+            Constants::kRibbonWidthFastStep);
+
+        if (wheelResult.consumed) {
+            if (wheelResult.action == Layout::RibbonModifierWheelAction::RibbonWidth) {
+                m_ribbonWidth = wheelResult.ribbonWidth;
+            } else if (wheelResult.action == Layout::RibbonModifierWheelAction::BlockSize &&
+                       wheelResult.blockSize != m_blockSize) {
+                m_blockSize = wheelResult.blockSize;
+                if (!m_fullViewEnabled) {
+                    const std::size_t centerOffset = (m_windowEndOffset > m_windowStartOffset)
+                        ? (m_windowStartOffset + ((m_windowEndOffset - m_windowStartOffset) / 2))
+                        : m_selectedOffset;
+                    setWindowFromCenter(centerOffset);
+                } else {
+                    m_matrixDirty = true;
+                }
+            }
+
+            suppressCanvasActions = true;
+            ImGui::SetScrollY(scrollY);
+        }
     }
 
     // Handle click on ribbon to select byte offset and scroll hex view.
-    if (ImGui::IsItemHovered() && mouseInPixelArea && ImGui::IsMouseClicked(ImGuiMouseButton_Left)) {
+    if (!suppressCanvasActions &&
+        canvasHovered &&
+        mouseInPixelArea &&
+        ImGui::IsMouseClicked(ImGuiMouseButton_Left)) {
         const float localX = std::clamp(ImGui::GetMousePos().x - pixelOriginX, 0.0F, contentWidth - 1.0F);
         const float localY = std::clamp(ImGui::GetMousePos().y - contentOrigin.y, 0.0F, contentHeight - 1.0F);
         const auto clickCol = static_cast<std::size_t>(localX / pixelScale);
@@ -1467,7 +1716,11 @@ void Application::drawRibbonColumn() {
     }
 
     // Handle drag on ribbon to scrub the analysis window (non-Full-View mode).
-    if (!m_fullViewEnabled && ImGui::IsItemHovered() && mouseInPixelArea && ImGui::IsMouseDown(ImGuiMouseButton_Left)) {
+    if (!suppressCanvasActions &&
+        !m_fullViewEnabled &&
+        canvasHovered &&
+        mouseInPixelArea &&
+        ImGui::IsMouseDown(ImGuiMouseButton_Left)) {
         const float localY = std::clamp(ImGui::GetMousePos().y - contentOrigin.y, 0.0F, contentHeight - 1.0F);
         const float normalizedY = (contentHeight <= 1.0F) ? 0.0F : (localY / contentHeight);
         const std::size_t centerOffset = static_cast<std::size_t>(normalizedY * static_cast<float>(bytes.size() - 1));

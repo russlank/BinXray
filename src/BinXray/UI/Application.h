@@ -56,6 +56,12 @@ struct SeekState {
     Core::SeekResult result;          ///< Resolved offsets + transition count.
 };
 
+enum class RibbonEdgeDragMode {
+    None,
+    Top,
+    Bottom
+};
+
 class Application {
 public:
     Application();
@@ -144,6 +150,7 @@ private:
     HexViewPanel m_hexViewPanel;
     SeekState m_seek;
     std::optional<std::size_t> m_seekScrollTarget;  ///< One-shot scroll target for hex view.
+    RibbonEdgeDragMode m_ribbonEdgeDragMode;        ///< Active ribbon edge drag (top/bottom) while resizing.
 
     // ---- 3D trigram plot state -----------------------------------------------
     Core::TrigramPlot m_trigramPlot;   ///< 256^3 byte-trigram density accumulator.
