@@ -138,6 +138,10 @@ Application::Application()
       m_windowStartOffset(0),
       m_windowEndOffset(0),
       m_matrixDirty(true),
+      m_ribbonAutoSlideEnabled(Constants::kRibbonAutoSlideDefaultEnabled),
+      m_ribbonAutoSlideRepeat(Constants::kRibbonAutoSlideDefaultRepeat),
+      m_ribbonAutoSlideSpeed(Constants::kRibbonAutoSlideSpeedDefault),
+      m_ribbonAutoSlideCarry(0.0F),
       m_isLoadingFile(false),
       m_loadingPath(),
       m_lastLoadError(),
@@ -506,6 +510,68 @@ void Application::setWindowFromCenter(std::size_t centerOffset) {
     m_matrixDirty = true;
 }
 
+void Application::updateAutoSlideWindow() {
+    const std::size_t fileSize = m_document.bytes().size();
+    m_ribbonAutoSlideSpeed = std::clamp(
+        m_ribbonAutoSlideSpeed,
+        Constants::kRibbonAutoSlideSpeedMin,
+        Constants::kRibbonAutoSlideSpeedMax);
+    if (!m_ribbonAutoSlideEnabled ||
+        !Layout::canAutoSlideWindow(
+            fileSize,
+            m_windowStartOffset,
+            m_windowEndOffset,
+            m_fullViewEnabled,
+            m_ribbonAutoSlideSpeed)) {
+        return;
+    }
+
+    const std::size_t rowStride = static_cast<std::size_t>(std::max(1, m_ribbonWidth));
+    if (!m_ribbonAutoSlideRepeat) {
+        // Stop immediately when already parked at end-of-data in non-repeat mode.
+        const Layout::RibbonAutoSlideResult probe = Layout::advanceAutoSlideWindow(
+            fileSize,
+            m_windowStartOffset,
+            m_windowEndOffset,
+            1,
+            rowStride,
+            false);
+        if (!probe.moved && !probe.shouldContinue) {
+            m_ribbonAutoSlideEnabled = false;
+            m_ribbonAutoSlideCarry = 0.0F;
+            return;
+        }
+    }
+
+    m_ribbonAutoSlideCarry += std::max(0.0F, m_ribbonAutoSlideSpeed);
+    const float wholeRowsF = std::floor(m_ribbonAutoSlideCarry);
+    if (wholeRowsF < 1.0F) {
+        return;
+    }
+    m_ribbonAutoSlideCarry -= wholeRowsF;
+
+    const std::size_t wholeRows = static_cast<std::size_t>(wholeRowsF);
+    const Layout::RibbonAutoSlideResult slide = Layout::advanceAutoSlideWindow(
+        fileSize,
+        m_windowStartOffset,
+        m_windowEndOffset,
+        wholeRows,
+        rowStride,
+        m_ribbonAutoSlideRepeat);
+
+    if (slide.moved) {
+        m_windowStartOffset = slide.range.startInclusive;
+        m_windowEndOffset = slide.range.endExclusive;
+        m_matrixDirty = true;
+    }
+
+    // Non-repeat mode stops automatically once end-of-data is reached.
+    if (!m_ribbonAutoSlideRepeat && !slide.shouldContinue) {
+        m_ribbonAutoSlideEnabled = false;
+        m_ribbonAutoSlideCarry = 0.0F;
+    }
+}
+
 void Application::rebuildMatrixIfDirty() {
     if (!m_matrixDirty) {
         return;
@@ -563,6 +629,14 @@ void Application::invalidateSeek() {
 bool Application::needsContinuousRender() const noexcept {
     // Auto-rotation advances yaw every frame.
     if (m_3dModeEnabled && m_3dAutoRotate) return true;
+    // Auto-slide advances active ribbon window every frame.
+    if (m_ribbonAutoSlideEnabled &&
+        Layout::canAutoSlideWindow(
+            m_document.bytes().size(),
+            m_windowStartOffset,
+            m_windowEndOffset,
+            m_fullViewEnabled,
+            m_ribbonAutoSlideSpeed)) return true;
     // Async file load needs polling each frame.
     if (m_isLoadingFile) return true;
     // Pending data recomputation.
@@ -857,6 +931,19 @@ void Application::drawControlsColumn() {
             m_ribbonWidth = std::clamp(proposed, Constants::kRibbonWidthMin, Constants::kRibbonWidthMax);
         }
     }
+
+    ImGui::Separator();
+    ImGui::TextColored(Constants::kControlsLabelColor, "Ribbon Auto-Slide");
+    if (ImGui::Checkbox("Auto-Slide", &m_ribbonAutoSlideEnabled)) {
+        if (!m_ribbonAutoSlideEnabled) {
+            m_ribbonAutoSlideCarry = 0.0F;
+        }
+    }
+    ImGui::SliderFloat("Speed (rows/frame)", &m_ribbonAutoSlideSpeed,
+        Constants::kRibbonAutoSlideSpeedMin,
+        Constants::kRibbonAutoSlideSpeedMax,
+        "%.2f");
+    ImGui::Checkbox("Repeat", &m_ribbonAutoSlideRepeat);
 
     // 3D auto-rotation controls (only visible in 3D mode).
     if (m_3dModeEnabled) {
@@ -1845,6 +1932,7 @@ void Application::drawWorkspace() {
 
 void Application::renderFrame() {
     pollAsyncFileLoad();
+    updateAutoSlideWindow();
 
     ImGui_ImplDX11_NewFrame();
     ImGui_ImplWin32_NewFrame();

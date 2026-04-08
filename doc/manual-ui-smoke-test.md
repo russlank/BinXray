@@ -46,31 +46,40 @@ Expected: `Ribbon Width` changes from wheel input while ribbon is hovered.
 11. Set `Ribbon Width` to a very large value (for example `4096` or `8192`).
 Expected: ribbon cells remain readable (minimum 1 px); horizontal scrolling appears so off-screen ribbon content and cursor markers can be reached.
 
-12. Click ribbon pixel area once.
+12. Enable `Auto-Slide` in controls with `Repeat` disabled and set moderate speed.
+Expected: active ribbon window advances automatically in row-proportional steps and stops at end-of-data.
+
+13. Enable `Repeat` while `Auto-Slide` is on.
+Expected: after reaching end-of-data, window wraps to the beginning and continues sliding.
+
+14. Enable `3D Mode` + `Auto-Rotate` while `Auto-Slide` remains enabled.
+Expected: auto-rotation and auto-slide run in parallel without blocking each other.
+
+15. Click ribbon pixel area once.
 Expected: selected offset changes; hex view scrolls to selected location.
 
-13. Enable seeking in 2D mode, hover matrix plot pixels, click to freeze/unfreeze.
+16. Enable seeking in 2D mode, hover matrix plot pixels, click to freeze/unfreeze.
 Expected: crosshair and counts update on hover; freeze toggles only from plot area.
 
-14. Click matrix margin area (label margins).
+17. Click matrix margin area (label margins).
 Expected: no freeze toggle and no seek update from margin-only clicks.
 
-15. Select an address in the seek list.
+18. Select an address in the seek list.
 Expected: selected byte updates and hex view scroll target is applied once.
 
-16. Switch to 3D mode and verify seek behavior.
+19. Switch to 3D mode and verify seek behavior.
 Expected: 2D seek address pane is hidden; 3D interactions remain functional.
 
-17. Test narrow window behavior by aggressively shrinking width.
+20. Test narrow window behavior by aggressively shrinking width.
 Expected: no visual breakage; hex + addresses remain usable (stacked fallback when needed).
 
-18. Rotate 3D plot (drag), then enable auto-rotate.
+21. Rotate 3D plot (drag), then enable auto-rotate.
 Expected: manual drag works when auto-rotate is off; auto-rotate animates smoothly when on.
 
-19. Toggle 3D background modes (`Black`, `White`, `Custom`) and opacity slider.
+22. Toggle 3D background modes (`Black`, `White`, `Custom`) and opacity slider.
 Expected: visible contrast changes; point transparency changes immediately.
 
-20. Return to 2D mode and verify normal seeking still works.
+23. Return to 2D mode and verify normal seeking still works.
 Expected: seek behavior recovers cleanly; no stale 3D-only state leakage.
 
 ## Pass/Fail Criteria

@@ -85,6 +85,12 @@ constexpr int    kBlockSizeDefault = 10240;
 constexpr int    kBlockSizeMin     =     2;
 constexpr int    kBlockSizeStep    =   256;
 constexpr int    kBlockSizeFastStep =  2048;
+/// Ribbon auto-slide controls (rows per frame).
+constexpr bool   kRibbonAutoSlideDefaultEnabled = false;
+constexpr bool   kRibbonAutoSlideDefaultRepeat  = false;
+constexpr float  kRibbonAutoSlideSpeedDefault   = 0.25F;
+constexpr float  kRibbonAutoSlideSpeedMin       = 0.05F;
+constexpr float  kRibbonAutoSlideSpeedMax       = 8.0F;
 
 // ── Seeking overlay ───────────────────────────────────────────────────────────
 /// Crosshair, coordinate labels, and highlight colours for the seeking feature

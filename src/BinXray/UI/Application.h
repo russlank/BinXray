@@ -8,7 +8,7 @@
 // `shutdown()` tears everything down.
 //
 // The workspace is rendered as three side-by-side columns:
-//   Left   – controls (file, display options, seeking options, 3D rotation).
+//   Left   – controls (file, display options, ribbon sizing/auto-slide, seeking options, 3D rotation).
 //   Centre – transition plot or 3D trigram scatter + hex view (+ seek list).
 //   Right  – bitmap ribbon overview with cursor triangles.
 //
@@ -83,6 +83,8 @@ private:
     void pollAsyncFileLoad();
     void refreshRangeAfterDocumentChange();
     void setWindowFromCenter(std::size_t centerOffset);
+    /// Advance the active analysis window automatically when Auto-Slide is enabled.
+    void updateAutoSlideWindow();
     void rebuildMatrixIfDirty();
     void drawWorkspace();
     void drawControlsColumn();
@@ -138,6 +140,10 @@ private:
     std::size_t m_windowStartOffset;
     std::size_t m_windowEndOffset;
     bool m_matrixDirty;
+    bool m_ribbonAutoSlideEnabled;  ///< Auto-advance active ribbon window when true.
+    bool m_ribbonAutoSlideRepeat;   ///< Wrap to start after reaching end when true.
+    float m_ribbonAutoSlideSpeed;   ///< Requested slide speed in rows/frame.
+    float m_ribbonAutoSlideCarry;   ///< Fractional rows accumulator for smooth low speeds.
 
     // ---- Async file I/O ------------------------------------------------------
     bool m_isLoadingFile;

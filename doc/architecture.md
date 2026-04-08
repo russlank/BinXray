@@ -69,6 +69,10 @@ ribbon canvas itself, `Ctrl + Wheel` adjusts Block Size while
 Ribbon width is clamped to 8192 columns. For wide ribbons, cells are kept at
 minimum 1 px width and the ribbon child area expands horizontally so users can
 scroll to inspect off-screen content and cursor markers.
+An Auto-Slide mode can advance the active window automatically by row-sized
+steps (`Ribbon Width` bytes per row). Speed is adjustable in rows/frame; when
+repeat is disabled Auto-Slide stops at end-of-data, and when repeat is enabled
+it wraps back to the start and continues.
 
 ### Snap-to-Data
 When enabled, the seeking crosshair automatically snaps to the nearest
@@ -166,8 +170,8 @@ freeze/scrub/select actions.
   boundary clamping, maxResults capping, self-transitions, inverted
   ranges, repeated trigram accumulation, mapIntensity modes, crosshair
   coordinate semantics, opacity-alpha scaling validation, ribbon
-  window-edge resize clamping logic, and modifier-wheel routing/clamping
-  for ribbon shortcuts.
+  window-edge resize clamping logic, modifier-wheel routing/clamping
+  for ribbon shortcuts, and auto-slide stop/wrap edge handling.
 - Process exit code reflects suite pass/fail for CI gating.
 
 ## Planned Evolution

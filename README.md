@@ -71,6 +71,7 @@ A companion **3D byte-trigram scatter plot** extends the analysis into three dim
 - **Mouse gauges for sizing**: use dedicated gauges under `Block Size` and `Ribbon Width` in the left panel for quick visual adjustment.
 - **Wheel-assisted sizing**: use the mouse wheel over `Block Size` / `Ribbon Width` controls, or over ribbon window edges, to nudge size quickly (`Shift` = larger step).
 - **Ribbon shortcut sizing**: hold `Ctrl` and use the mouse wheel over the ribbon to change `Block Size`; hold `Ctrl+Shift` to change `Ribbon Width`.
+- **Ribbon auto-slide**: optional automatic window sliding in ribbon view with adjustable speed (rows/frame) and optional repeat-from-start behavior at end-of-data.
 - **Wide ribbon support (up to 8192 columns)**: ribbon cells stay at least 1 px wide; the ribbon canvas expands and uses horizontal scrolling for very wide layouts.
 - Virtualised hex view (ImGuiListClipper) with seek highlighting and programmatic scroll-to support.
 - **ASCII column highlighting**: per-character colouring matches hex byte highlight state.
@@ -86,7 +87,7 @@ A companion **3D byte-trigram scatter plot** extends the analysis into three dim
 
 ### Testing
 - Seven automated test suites: `ByteFormatterTests`, `BinaryDocumentTests`, `TransitionMatrixTests`, `TransitionSeekerTests`, `TrigramPlotTests`, `CrosshairCoordsTests`, `UILayoutLogicTests`.
-- Edge cases covered: empty/missing files, single byte, sub-ranges, boundary clamping, maxResults capping, self-transitions, inverted ranges, repeated trigram accumulation, mapIntensity modes, crosshair coordinate semantics, opacity-alpha validation, ribbon window-edge resize clamping, and modifier-wheel routing/clamping (including width/block-size limits).
+- Edge cases covered: empty/missing files, single byte, sub-ranges, boundary clamping, maxResults capping, self-transitions, inverted ranges, repeated trigram accumulation, mapIntensity modes, crosshair coordinate semantics, opacity-alpha validation, ribbon window-edge resize clamping, modifier-wheel routing/clamping (including width/block-size limits), and auto-slide stop/wrap behavior.
 
 ## Product Direction (High-Value Next Steps)
 
