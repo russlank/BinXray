@@ -267,6 +267,59 @@ bool runUILayoutLogicTests() {
         passed = expectInt(wheel.blockSize, 656, "ribbon-wheel: reversed block bounds normalized") && passed;
     }
 
+    // 11) Ribbon auto-slide helpers.
+    {
+        passed = expectFalse(canAutoSlideWindow(0, 0, 0, false, 1.0F), "auto-slide can: empty file") && passed;
+        passed = expectFalse(canAutoSlideWindow(100, 0, 50, true, 1.0F), "auto-slide can: full-view enabled") && passed;
+        passed = expectFalse(canAutoSlideWindow(100, 0, 100, false, 1.0F), "auto-slide can: full-range window") && passed;
+        passed = expectFalse(canAutoSlideWindow(100, 10, 50, false, 0.0F), "auto-slide can: non-positive speed") && passed;
+        passed = expectTrue(canAutoSlideWindow(100, 10, 50, false, 0.25F), "auto-slide can: movable window") && passed;
+
+        // Non-repeat: regular forward shift by rows * rowStride.
+        auto slide = advanceAutoSlideWindow(1000, 100, 300, 2, 128, false);
+        passed = expectSize(slide.range.startInclusive, 356, "auto-slide non-repeat: start advanced") && passed;
+        passed = expectSize(slide.range.endExclusive, 556, "auto-slide non-repeat: end advanced") && passed;
+        passed = expectTrue(slide.moved, "auto-slide non-repeat: moved") && passed;
+        passed = expectFalse(slide.reachedEnd, "auto-slide non-repeat: not at end") && passed;
+        passed = expectTrue(slide.shouldContinue, "auto-slide non-repeat: should continue") && passed;
+
+        // Non-repeat: clamp at end and stop.
+        slide = advanceAutoSlideWindow(1000, 700, 900, 3, 128, false);
+        passed = expectSize(slide.range.startInclusive, 800, "auto-slide non-repeat: clamped start at end") && passed;
+        passed = expectSize(slide.range.endExclusive, 1000, "auto-slide non-repeat: clamped end at file") && passed;
+        passed = expectTrue(slide.reachedEnd, "auto-slide non-repeat: reached end") && passed;
+        passed = expectFalse(slide.shouldContinue, "auto-slide non-repeat: stop at end") && passed;
+
+        // Non-repeat: already at end remains stationary and signals stop.
+        slide = advanceAutoSlideWindow(1000, 800, 1000, 1, 128, false);
+        passed = expectFalse(slide.moved, "auto-slide non-repeat: stationary at end") && passed;
+        passed = expectFalse(slide.shouldContinue, "auto-slide non-repeat: stationary end stop") && passed;
+
+        // Repeat: wraps around and keeps running.
+        slide = advanceAutoSlideWindow(1000, 700, 900, 3, 128, true);
+        passed = expectSize(slide.range.startInclusive, 283, "auto-slide repeat: wrapped start") && passed;
+        passed = expectSize(slide.range.endExclusive, 483, "auto-slide repeat: wrapped end") && passed;
+        passed = expectTrue(slide.wrapped, "auto-slide repeat: wrapped flag set") && passed;
+        passed = expectTrue(slide.shouldContinue, "auto-slide repeat: continues") && passed;
+
+        // rowsToAdvance == 0 keeps range unchanged and can continue.
+        slide = advanceAutoSlideWindow(1000, 250, 450, 0, 128, false);
+        passed = expectSize(slide.range.startInclusive, 250, "auto-slide zero rows: start unchanged") && passed;
+        passed = expectSize(slide.range.endExclusive, 450, "auto-slide zero rows: end unchanged") && passed;
+        passed = expectFalse(slide.moved, "auto-slide zero rows: not moved") && passed;
+        passed = expectTrue(slide.shouldContinue, "auto-slide zero rows: continue true") && passed;
+
+        // zero row stride is normalized to one byte per row.
+        slide = advanceAutoSlideWindow(100, 10, 30, 5, 0, false);
+        passed = expectSize(slide.range.startInclusive, 15, "auto-slide zero stride: normalized to one") && passed;
+        passed = expectSize(slide.range.endExclusive, 35, "auto-slide zero stride: window preserved") && passed;
+
+        // Invalid/inverted input range normalizes.
+        slide = advanceAutoSlideWindow(100, 80, 20, 1, 10, false);
+        passed = expectSize(slide.range.startInclusive, 30, "auto-slide inverted range: normalized then shifted") && passed;
+        passed = expectSize(slide.range.endExclusive, 90, "auto-slide inverted range: normalized size preserved") && passed;
+    }
+
     if (passed) {
         std::cout << "[PASS] UILayoutLogicTests" << std::endl;
     }

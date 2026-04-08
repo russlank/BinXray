@@ -10,6 +10,7 @@
 
 #include <algorithm>
 #include <cstddef>
+#include <limits>
 
 namespace BinXray::UI::Layout {
 
@@ -48,6 +49,14 @@ struct RibbonModifierWheelResult {
     int ribbonWidth;
     RibbonModifierWheelAction action;
     bool consumed;
+};
+
+struct RibbonAutoSlideResult {
+    WindowRange range;
+    bool moved;
+    bool wrapped;
+    bool reachedEnd;
+    bool shouldContinue;
 };
 
 [[nodiscard]] inline WorkspaceWidths computeWorkspaceWidths(
@@ -241,6 +250,95 @@ struct RibbonModifierWheelResult {
         result.action = RibbonModifierWheelAction::BlockSize;
     }
 
+    return result;
+}
+
+[[nodiscard]] inline bool canAutoSlideWindow(
+    std::size_t fileSize,
+    std::size_t windowStartInclusive,
+    std::size_t windowEndExclusive,
+    bool fullViewEnabled,
+    float speedRowsPerFrame) noexcept {
+    if (fullViewEnabled || fileSize == 0 || speedRowsPerFrame <= 0.0F) {
+        return false;
+    }
+
+    std::size_t start = std::min(windowStartInclusive, fileSize);
+    std::size_t end = std::min(windowEndExclusive, fileSize);
+    if (end < start) {
+        std::swap(start, end);
+    }
+
+    return end > start && (end - start) < fileSize;
+}
+
+[[nodiscard]] inline RibbonAutoSlideResult advanceAutoSlideWindow(
+    std::size_t fileSize,
+    std::size_t currentStartInclusive,
+    std::size_t currentEndExclusive,
+    std::size_t rowsToAdvance,
+    std::size_t bytesPerRow,
+    bool repeatFromStart) noexcept {
+    RibbonAutoSlideResult result{{0, 0}, false, false, false, false};
+
+    if (fileSize == 0) {
+        return result;
+    }
+
+    std::size_t start = std::min(currentStartInclusive, fileSize);
+    std::size_t end = std::min(currentEndExclusive, fileSize);
+    if (end < start) {
+        std::swap(start, end);
+    }
+    if (end <= start) {
+        result.range = {start, end};
+        return result;
+    }
+
+    const std::size_t windowSize = end - start;
+    if (windowSize >= fileSize) {
+        result.range = {0, fileSize};
+        return result;
+    }
+
+    const std::size_t rowStride = std::max<std::size_t>(1, bytesPerRow);
+    const std::size_t maxStart = fileSize - windowSize;
+    if (rowsToAdvance == 0) {
+        result.range = {start, start + windowSize};
+        result.shouldContinue = true;
+        return result;
+    }
+
+    // Clamp multiplication to avoid overflow in edge-case arithmetic.
+    std::size_t deltaBytes = 0;
+    if (rowsToAdvance > (std::numeric_limits<std::size_t>::max() / rowStride)) {
+        deltaBytes = std::numeric_limits<std::size_t>::max();
+    } else {
+        deltaBytes = rowsToAdvance * rowStride;
+    }
+
+    std::size_t newStart = start;
+    if (!repeatFromStart) {
+        if (deltaBytes >= (maxStart - start)) {
+            newStart = maxStart;
+            result.reachedEnd = true;
+        } else {
+            newStart = start + deltaBytes;
+        }
+        result.shouldContinue = newStart < maxStart;
+    } else {
+        const std::size_t cycleSize = maxStart + 1;
+        if (cycleSize > 0) {
+            const std::size_t cycleStep = deltaBytes % cycleSize;
+            const std::size_t sum = start + cycleStep;
+            newStart = (sum >= cycleSize) ? (sum - cycleSize) : sum;
+            result.wrapped = (deltaBytes >= cycleSize) || (sum >= cycleSize);
+        }
+        result.shouldContinue = true;
+    }
+
+    result.moved = (newStart != start);
+    result.range = {newStart, newStart + windowSize};
     return result;
 }
 
